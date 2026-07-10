@@ -1,6 +1,14 @@
 /*************************************************
  * 04_DongTien.gs
  * Sheet 04 - Dòng tiền & Lợi nhuận
+ *
+ * Nguyên tắc tài trợ:
+ * - Tiền cuối kỳ trước được dùng trước khi huy động vốn mới.
+ * - Khi thiếu tiền, huy động CSH và vốn vay theo tỷ lệ đầu vào.
+ * - Lãi vay tính trên dư nợ đầu kỳ và được vốn hóa vào dư nợ.
+ * - Khi có tiền dư, ưu tiên trả gốc; phần còn lại giữ sang kỳ sau.
+ * - Chỉ kỳ cuối mô hình mới phân phối tiền còn lại cho CSH.
+ * - FCFE phản ánh dòng tiền khả dụng cho CSH, kể cả khi tiền được giữ lại.
  *************************************************/
 
 function FS_lapSheet04() {
@@ -20,14 +28,13 @@ function FS_lapSheet04() {
   const startDateA1 = FS04_getInfoCellA1_(tech, 'Ngày bắt đầu dự án');
   const loanRateA1 = FS04_getInfoCellA1_(tech, 'Lãi suất vay năm');
   const loanRatioA1 = FS04_getInfoCellA1_(tech, 'Tỷ lệ vốn vay');
-  const repayStartA1 = FS04_getInfoCellA1_(tech, 'Tháng bắt đầu trả gốc');
 
   if (!soThang || !startDateA1) {
     throw new Error('Thiếu "Số tháng mô hình" hoặc "Ngày bắt đầu dự án".');
   }
 
-  if (!loanRateA1 || !loanRatioA1 || !repayStartA1) {
-    throw new Error('Thiếu "Lãi suất vay năm", "Tỷ lệ vốn vay" hoặc "Tháng bắt đầu trả gốc".');
+  if (!loanRateA1 || !loanRatioA1) {
+    throw new Error('Thiếu "Lãi suất vay năm" hoặc "Tỷ lệ vốn vay".');
   }
 
   const endRow = soThang + 2;
@@ -69,10 +76,10 @@ function FS_lapSheet04() {
     'Doanh thu trước VAT','VAT đầu ra','Dòng tiền huy động từ KH','Tổng chi trước VAT','Tổng chi sau VAT',
     'VAT đầu vào','VAT phải nộp','Thuế TNDN',
     'Tổng giá vốn tính thuế','Lợi nhuận chịu thuế','Lợi nhuận sau thuế',
-    'Dòng tiền trước tài trợ','Nhu cầu vốn sau thu hồi phân phối','Dòng tiền phân phối cho CSH',
+    'Dòng tiền trước tài trợ','Nhu cầu vốn sau tiền đầu kỳ','Dòng tiền phân phối cho CSH',
     'CSH góp mới','CSH nộp lại từ tiền đã phân phối','Tổng dòng CSH vào dự án',
-    'Giải ngân vay','Lãi vay','Trả gốc','Dư nợ cuối kỳ',
-    'Tiền cuối kỳ','Số tiền đã phân phối còn có thể thu hồi','Ghi chú',
+    'Giải ngân vay','Lãi vay vốn hóa','Trả gốc','Dư nợ cuối kỳ',
+    'Tiền cuối kỳ','Tiền khả dụng sau trả nợ','Ghi chú',
     'Lũy kế dòng tiền KH','Lũy kế chi sau VAT','Lũy kế CSH góp mới','Lũy kế CSH nộp lại','Lũy kế giải ngân vay','Lũy kế Thuế TNDN','Lũy kế lợi nhuận sau thuế',
     'FCFF_TIPV','FCFE_EPV','FCFF lũy kế','FCFE lũy kế'
   ]]);
@@ -97,28 +104,32 @@ function FS_lapSheet04() {
 
   for (let r = 3; r <= endRow; r++) {
     const prevDebt = r === 3 ? '0' : `Y${r - 1}`;
-    const prevDist = r === 3 ? '0' : `AA${r - 1}`;
-    const cashAfterInterest = `(P${r}-W${r})`;
+    const prevCash = r === 3 ? '0' : `Z${r - 1}`;
+    const cashBeforeFunding = `(${prevCash}+P${r})`;
+    const debtBeforeRepayment = `(${prevDebt}+V${r}+W${r})`;
 
+    // Lãi vay vốn hóa: tính trên dư nợ đầu kỳ.
     sh04.getRange(r, 23).setFormula(`=${prevDebt}*((1+${techName}!${loanRateA1})^(1/12)-1)`);
 
-    sh04.getRange(r, 20).setFormula(`=MIN(${prevDist};MAX(0;-${cashAfterInterest}))`);
-    sh04.getRange(r, 17).setFormula(`=MAX(0;-${cashAfterInterest}-T${r})`);
+    // Chỉ huy động khi tiền đầu kỳ cộng dòng tiền hoạt động không đủ chi trả.
+    sh04.getRange(r, 17).setFormula(`=MAX(0;-${cashBeforeFunding})`);
     sh04.getRange(r, 19).setFormula(`=Q${r}*(1-${techName}!${loanRatioA1})`);
+    sh04.getRange(r, 20).setValue(0);
     sh04.getRange(r, 21).setFormula(`=S${r}+T${r}`);
     sh04.getRange(r, 22).setFormula(`=Q${r}*${techName}!${loanRatioA1}`);
 
-    const cashAfterFunding = `(${cashAfterInterest}+S${r}+T${r}+V${r})`;
+    // Tiền dư hoạt động được dùng trả gốc. Không dùng vốn góp hoặc giải ngân mới để trả gốc ngay.
+    sh04.getRange(r, 24).setFormula(`=MIN(${debtBeforeRepayment};MAX(0;${cashBeforeFunding}))`);
+    sh04.getRange(r, 25).setFormula(`=MAX(0;${debtBeforeRepayment}-X${r})`);
 
-    sh04.getRange(r, 24).setFormula(`=IF(A${r}<${techName}!${repayStartA1};0;MIN(${prevDebt}+V${r};MAX(0;${cashAfterFunding})))`);
-    sh04.getRange(r, 25).setFormula(`=MAX(0;${prevDebt}+V${r}-X${r})`);
+    // Tiền còn lại sau trả gốc được giữ lại; chỉ phân phối tại kỳ cuối.
+    sh04.getRange(r, 27).setFormula(`=MAX(0;${cashBeforeFunding}-X${r})`);
+    sh04.getRange(r, 18).setFormula(r === endRow ? `=AA${r}` : '=0');
+    sh04.getRange(r, 26).setFormula(`=MAX(0;AA${r}-R${r})`);
 
-    const cashAfterDebt = `(${cashAfterFunding}-X${r})`;
-
-    sh04.getRange(r, 18).setFormula(`=MAX(0;${cashAfterDebt})`);
-    sh04.getRange(r, 26).setFormula(`=MAX(0;${cashAfterDebt}-R${r})`);
-    sh04.getRange(r, 27).setFormula(`=MAX(0;${prevDist}+R${r}-T${r})`);
-    sh04.getRange(r, 28).setFormula(`=IF(R${r}>0;"Phân phối cho CSH";IF(T${r}>0;"Thu hồi phân phối cũ";IF(Q${r}>0;"Huy động mới theo tỷ lệ vốn";IF(X${r}>0;"Trả gốc vay";""))))`);
+    sh04.getRange(r, 28).setFormula(
+      `=IF(R${r}>0;"Phân phối cuối mô hình";IF(X${r}>0;"Trả gốc vay";IF(Q${r}>0;"Huy động mới theo tỷ lệ vốn";IF(Z${r}>0;"Giữ tiền sang kỳ sau";""))))`
+    );
 
     sh04.getRange(r, 29).setFormula(`=SUM($G$3:G${r})`);
     sh04.getRange(r, 30).setFormula(`=SUM($I$3:I${r})`);
@@ -128,8 +139,12 @@ function FS_lapSheet04() {
     sh04.getRange(r, 34).setFormula(`=SUM($L$3:L${r})`);
     sh04.getRange(r, 35).setFormula(`=SUM($O$3:O${r})`);
 
+    // FCFF không phụ thuộc cấu trúc tài trợ.
     sh04.getRange(r, 36).setFormula(`=P${r}`);
-    sh04.getRange(r, 37).setFormula(`=R${r}-S${r}-T${r}`);
+
+    // FCFE = biến động tiền thuộc CSH sau trả nợ - vốn CSH góp mới.
+    // Tiền giữ lại tăng là FCFE dương; sử dụng tiền giữ lại kỳ sau tạo FCFE âm tương ứng.
+    sh04.getRange(r, 37).setFormula(`=AA${r}-${prevCash}-S${r}`);
     sh04.getRange(r, 38).setFormula(`=SUM($AJ$3:AJ${r})`);
     sh04.getRange(r, 39).setFormula(`=SUM($AK$3:AK${r})`);
   }
