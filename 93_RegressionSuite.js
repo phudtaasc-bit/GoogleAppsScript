@@ -73,6 +73,8 @@ function FS93_checkCashFlowRows_(sh04, issues, warnings, tol) {
 
   const rows = sh04.getRange(3, 1, n, 39).getValues();
   let prevDebt = 0;
+  let prevCash = 0;
+
   rows.forEach((r, i) => {
     const rowNo = i + 3;
     const month = FS93_num_(r[0]);
@@ -83,6 +85,7 @@ function FS93_checkCashFlowRows_(sh04, issues, warnings, tol) {
     const vatPayable = FS93_num_(r[10]);
     const cit = FS93_num_(r[11]);
     const beforeFinancing = FS93_num_(r[15]);
+    const need = FS93_num_(r[16]);
     const equityDistribution = FS93_num_(r[17]);
     const equityNew = FS93_num_(r[18]);
     const equityReturn = FS93_num_(r[19]);
@@ -90,8 +93,11 @@ function FS93_checkCashFlowRows_(sh04, issues, warnings, tol) {
     const interest = FS93_num_(r[22]);
     const principal = FS93_num_(r[23]);
     const debtEnd = FS93_num_(r[24]);
+    const cashEnd = FS93_num_(r[25]);
+    const cashAvailable = FS93_num_(r[26]);
     const fcff = FS93_num_(r[35]);
     const fcfe = FS93_num_(r[36]);
+    const isFinal = i === rows.length - 1;
 
     const expectedBeforeFinancing = revenueCash - costAfterVat - vatPayable - cit;
     if (Math.abs(beforeFinancing - expectedBeforeFinancing) > tol) {
@@ -100,23 +106,69 @@ function FS93_checkCashFlowRows_(sh04, issues, warnings, tol) {
     if (Math.abs(fcff - beforeFinancing) > tol) {
       issues.push('Sheet 04 dòng ' + rowNo + ': FCFF không khớp dòng tiền trước tài trợ.');
     }
-    if (Math.abs(fcfe - (equityDistribution - equityNew - equityReturn)) > tol) {
-      issues.push('Sheet 04 dòng ' + rowNo + ': FCFE không khớp dòng tiền thực nhận/góp của CSH.');
+
+    const cashBeforeFunding = prevCash + beforeFinancing;
+    const expectedNeed = Math.max(0, -cashBeforeFunding);
+    if (Math.abs(need - expectedNeed) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Nhu cầu vốn chưa dùng đúng tiền đầu kỳ.');
     }
-    if (Math.abs(debtEnd - Math.max(0, prevDebt + loanDraw - principal)) > tol) {
-      issues.push('Sheet 04 dòng ' + rowNo + ': Dư nợ cuối kỳ không khớp.');
+    if (Math.abs(need - equityNew - loanDraw) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Nhu cầu vốn không khớp CSH góp mới + giải ngân vay.');
+    }
+    if (Math.abs(equityReturn) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Không được phát sinh CSH nộp lại từ tiền đã phân phối.');
+    }
+
+    const expectedPrincipal = Math.min(prevDebt + loanDraw + interest, Math.max(0, cashBeforeFunding));
+    if (Math.abs(principal - expectedPrincipal) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Trả gốc không khớp tiền dư và dư nợ sau vốn hóa lãi.');
+    }
+
+    const expectedDebt = Math.max(0, prevDebt + loanDraw + interest - principal);
+    if (Math.abs(debtEnd - expectedDebt) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Dư nợ cuối kỳ không khớp dư nợ đầu kỳ + giải ngân + lãi vay - trả gốc.');
+    }
+
+    const expectedAvailable = Math.max(0, cashBeforeFunding - principal);
+    if (Math.abs(cashAvailable - expectedAvailable) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Tiền khả dụng sau trả nợ không khớp.');
+    }
+
+    const expectedDistribution = isFinal ? cashAvailable : 0;
+    if (Math.abs(equityDistribution - expectedDistribution) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Phân phối CSH chỉ được phát sinh tại kỳ cuối.');
+    }
+
+    const expectedCashEnd = Math.max(0, cashAvailable - equityDistribution);
+    if (Math.abs(cashEnd - expectedCashEnd) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Tiền cuối kỳ không khớp.');
+    }
+
+    const expectedFcfe = cashAvailable - prevCash - equityNew;
+    if (Math.abs(fcfe - expectedFcfe) > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': FCFE không khớp biến động tiền khả dụng sau trả nợ trừ vốn CSH góp mới.');
+    }
+
+    if (need > tol && principal > tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Vừa huy động vốn vừa trả gốc trong cùng kỳ.');
     }
     if (cit < -tol) issues.push('Sheet 04 dòng ' + rowNo + ': Thuế TNDN âm.');
     if (interest < -tol || loanDraw < -tol || principal < -tol || debtEnd < -tol) {
       issues.push('Sheet 04 dòng ' + rowNo + ': Chỉ tiêu vay có giá trị âm.');
     }
-    if (vatPayable < -tol && i !== rows.length - 1) {
+    if (cashEnd < -tol || cashAvailable < -tol) {
+      issues.push('Sheet 04 dòng ' + rowNo + ': Chỉ tiêu tiền có giá trị âm.');
+    }
+    if (vatPayable < -tol && !isFinal) {
       issues.push('Sheet 04 dòng ' + rowNo + ': Hoàn VAT xuất hiện trước kỳ cuối.');
     }
+
     prevDebt = debtEnd;
+    prevCash = cashEnd;
   });
 
   if (prevDebt > tol) warnings.push('Cuối mô hình vẫn còn dư nợ vay: ' + Math.round(prevDebt).toLocaleString('vi-VN') + ' đồng.');
+  if (prevCash > tol) issues.push('Cuối mô hình vẫn còn tiền chưa phân phối cho CSH.');
 }
 
 function FS93_checkSheetLinks_(sh02, sh03, sh04, issues, tol) {
