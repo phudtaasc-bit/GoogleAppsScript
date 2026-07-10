@@ -8,7 +8,7 @@
  * - Lãi vay tính trên dư nợ đầu kỳ và được vốn hóa vào dư nợ.
  * - Khi có tiền dư, ưu tiên trả gốc; phần còn lại giữ sang kỳ sau.
  * - Chỉ kỳ cuối mô hình mới phân phối tiền còn lại cho CSH.
- * - FCFE phản ánh dòng tiền khả dụng cho CSH, kể cả khi tiền được giữ lại.
+ * - FCFE = FCFF + giải ngân vay - trả gốc, do lãi vay được vốn hóa và không chi tiền trong kỳ.
  *************************************************/
 
 function FS_lapSheet04() {
@@ -142,9 +142,10 @@ function FS_lapSheet04() {
     // FCFF không phụ thuộc cấu trúc tài trợ.
     sh04.getRange(r, 36).setFormula(`=P${r}`);
 
-    // FCFE = biến động tiền thuộc CSH sau trả nợ - vốn CSH góp mới.
-    // Tiền giữ lại tăng là FCFE dương; sử dụng tiền giữ lại kỳ sau tạo FCFE âm tương ứng.
-    sh04.getRange(r, 37).setFormula(`=AA${r}-${prevCash}-S${r}`);
+    // Do lãi vay được vốn hóa, FCFE trong kỳ bằng FCFF cộng vay ròng.
+    // Công thức này tương đương với biến động tiền khả dụng trừ vốn CSH góp mới,
+    // nhưng không ghi nhận lại số dư tiền giữ từ kỳ trước.
+    sh04.getRange(r, 37).setFormula(`=P${r}+V${r}-X${r}`);
     sh04.getRange(r, 38).setFormula(`=SUM($AJ$3:AJ${r})`);
     sh04.getRange(r, 39).setFormula(`=SUM($AK$3:AK${r})`);
   }
