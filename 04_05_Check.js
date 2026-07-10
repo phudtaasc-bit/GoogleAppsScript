@@ -19,6 +19,7 @@ function FS04_check() {
   const issues = [];
   const tol = 10;
   let prevDebt = 0;
+  let prevCash = 0;
 
   data.forEach((r, i) => {
     const rowNo = startRow + i;
@@ -38,17 +39,18 @@ function FS04_check() {
     const lnSauThue = FS04_checkNum_(r[14]);       // O
     const dongTienTruocTT = FS04_checkNum_(r[15]); // P
     const nhuCauVon = FS04_checkNum_(r[16]);       // Q
-    const phanPhoiCSH = FS04_checkNum_(r[17]);      // R
-    const cshGopMoi = FS04_checkNum_(r[18]);        // S
-    const cshNopLai = FS04_checkNum_(r[19]);        // T
-    const tongDongCSH = FS04_checkNum_(r[20]);      // U
-    const giaiNganVay = FS04_checkNum_(r[21]);      // V
-    const laiVay = FS04_checkNum_(r[22]);           // W
-    const traGoc = FS04_checkNum_(r[23]);           // X
-    const duNoCuoiKy = FS04_checkNum_(r[24]);       // Y
-    const tienCuoiKy = FS04_checkNum_(r[25]);       // Z
-    const fcff = FS04_checkNum_(r[35]);             // AJ
-    const fcfe = FS04_checkNum_(r[36]);             // AK
+    const phanPhoiCSH = FS04_checkNum_(r[17]);     // R
+    const cshGopMoi = FS04_checkNum_(r[18]);       // S
+    const cshNopLai = FS04_checkNum_(r[19]);       // T
+    const tongDongCSH = FS04_checkNum_(r[20]);     // U
+    const giaiNganVay = FS04_checkNum_(r[21]);     // V
+    const laiVay = FS04_checkNum_(r[22]);          // W
+    const traGoc = FS04_checkNum_(r[23]);          // X
+    const duNoCuoiKy = FS04_checkNum_(r[24]);      // Y
+    const tienCuoiKy = FS04_checkNum_(r[25]);      // Z
+    const tienKhaDung = FS04_checkNum_(r[26]);     // AA
+    const fcff = FS04_checkNum_(r[35]);            // AJ
+    const fcfe = FS04_checkNum_(r[36]);            // AK
     const laKyCuoi = i === data.length - 1;
 
     if (Math.abs(tienKH - dtTruocVAT - vatDauRa) > tol) {
@@ -72,21 +74,55 @@ function FS04_check() {
       issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFF không khớp dòng tiền trước tài trợ.`);
     }
 
-    if (Math.abs(fcfe - (phanPhoiCSH - cshGopMoi - cshNopLai)) > tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFE không khớp phân phối cho CSH trừ các dòng CSH góp vào.`);
-    }
-
-    if (Math.abs(tongDongCSH - cshGopMoi - cshNopLai) > tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng dòng CSH vào dự án chưa khớp.`);
+    const cashBeforeFunding = prevCash + dongTienTruocTT;
+    const needCalc = Math.max(0, -cashBeforeFunding);
+    if (Math.abs(nhuCauVon - needCalc) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Nhu cầu vốn chưa trừ đúng tiền đầu kỳ.`);
     }
 
     if (Math.abs(nhuCauVon - cshGopMoi - giaiNganVay) > tol) {
       issues.push(`Dòng ${rowNo} / tháng ${thang}: Nhu cầu vốn ≠ CSH góp mới + Giải ngân vay.`);
     }
 
-    const debtCalc = Math.max(0, prevDebt + giaiNganVay - traGoc);
+    if (Math.abs(tongDongCSH - cshGopMoi - cshNopLai) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng dòng CSH vào dự án chưa khớp.`);
+    }
+
+    if (Math.abs(cshNopLai) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Không được phát sinh CSH nộp lại từ tiền đã phân phối.`);
+    }
+
+    const principalCalc = Math.min(prevDebt + giaiNganVay + laiVay, Math.max(0, cashBeforeFunding));
+    if (Math.abs(traGoc - principalCalc) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Trả gốc chưa khớp tiền dư và dư nợ sau vốn hóa lãi.`);
+    }
+
+    const debtCalc = Math.max(0, prevDebt + giaiNganVay + laiVay - traGoc);
     if (Math.abs(duNoCuoiKy - debtCalc) > tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Dư nợ cuối kỳ chưa khớp dư nợ đầu kỳ + giải ngân - trả gốc.`);
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Dư nợ cuối kỳ ≠ dư nợ đầu kỳ + giải ngân + lãi vay - trả gốc.`);
+    }
+
+    const availableCalc = Math.max(0, cashBeforeFunding - traGoc);
+    if (Math.abs(tienKhaDung - availableCalc) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tiền khả dụng sau trả nợ chưa khớp.`);
+    }
+
+    const distributionCalc = laKyCuoi ? tienKhaDung : 0;
+    if (Math.abs(phanPhoiCSH - distributionCalc) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Chỉ kỳ cuối mới được phân phối toàn bộ tiền khả dụng.`);
+    }
+
+    if (Math.abs(tienCuoiKy - Math.max(0, tienKhaDung - phanPhoiCSH)) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tiền cuối kỳ chưa khớp tiền khả dụng trừ phân phối.`);
+    }
+
+    const fcfeCalc = tienKhaDung - prevCash - cshGopMoi;
+    if (Math.abs(fcfe - fcfeCalc) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFE chưa khớp biến động tiền thuộc CSH sau trả nợ trừ vốn góp mới.`);
+    }
+
+    if (nhuCauVon > tol && traGoc > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Vừa huy động vốn vừa trả gốc trong cùng kỳ.`);
     }
 
     // VAT âm chỉ hợp lệ ở kỳ cuối và được hiểu là khoản hoàn thuế.
@@ -97,9 +133,10 @@ function FS04_check() {
     if (giaVon < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng giá vốn tính thuế âm.`);
     if (nhuCauVon < -tol || cshGopMoi < -tol || giaiNganVay < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Nhu cầu vốn, vốn CSH hoặc giải ngân vay âm.`);
     if (laiVay < -tol || traGoc < -tol || duNoCuoiKy < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Lãi vay, trả gốc hoặc dư nợ âm.`);
-    if (tienCuoiKy < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Tiền cuối kỳ âm.`);
+    if (tienCuoiKy < -tol || tienKhaDung < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Tiền cuối kỳ hoặc tiền khả dụng âm.`);
 
     prevDebt = duNoCuoiKy;
+    prevCash = tienCuoiKy;
   });
 
   if (issues.length === 0) {
