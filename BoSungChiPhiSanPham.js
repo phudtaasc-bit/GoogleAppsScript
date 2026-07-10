@@ -1,15 +1,9 @@
 /*************************************************
  * FS V2.1 - CLEAN FILE
- * Dán ĐÈ TOÀN BỘ nội dung file BoSungChiPhiSanPham... hiện tại bằng file này.
- *
- * Mục tiêu:
- * - Xóa tác dụng của patch V4/V4.1 cũ.
- * - Không ghi đè FS_lapSheet02, FS_lapSheet03, FS_lapSheet00.
- * - Chỉ giữ hàm chạy mô hình và hàm chạy tách bước.
- *
- * LƯU Ý:
- * - File 02.Doanhthu.gs phải dùng bản FS_V2_0_02_DoanhThu.
- * - File 03.Chiphi.gs phải dùng bản FS_V2_1_03_ChiPhiVonVay.
+ * Luồng chạy mô hình giữ nguyên thứ tự phụ thuộc hiện tại.
+ * Sheet 03 chạy qua lớp vá FS_lapSheet03_Patched để:
+ * - Tách đúng Tiền SDĐ/Tiền thuê đất theo nhóm sản phẩm.
+ * - Bổ sung VAT đầu vào xây dựng & thiết bị và chi phí bán hàng.
  *************************************************/
 
 function FS_chayToanBoMoHinh_CoLaiVay() {
@@ -17,8 +11,9 @@ function FS_chayToanBoMoHinh_CoLaiVay() {
   ss.toast('Đang chạy toàn bộ mô hình...', 'FS V2.1', 5);
 
   FS_taoKyThuatTuDauVao();
+  FS97_assertLandCostConfig_();
 
-  FS_lapSheet03();
+  FS_lapSheet03_Patched();
   FS_lapSheet02();
   FS_lapSheet04();
 
@@ -38,7 +33,8 @@ function FS_chayMoHinh_Buoc1() {
   ss.toast('Đang chạy bước 1...', 'FS V2.1', 5);
 
   FS_taoKyThuatTuDauVao();
-  FS_lapSheet03();
+  FS97_assertLandCostConfig_();
+  FS_lapSheet03_Patched();
   FS_lapSheet02();
   FS_lapSheet04();
   FS03_capNhatNguonVonTuSheet04();
@@ -60,18 +56,14 @@ function FS_chayMoHinh_Buoc2() {
 
 /**
  * Chạy kiểm tra nhanh để phát hiện project còn patch cũ hay không.
- * Nếu kết quả báo OK nhưng vẫn lỗi, nghĩa là còn file khác đang chứa hàm cũ
- * và cần tìm bằng Ctrl + Shift + F.
  */
 function FS_V21_KiemTraNhanhSauKhiDan() {
   const ss = SpreadsheetApp.getActive();
   const msg = [
-    'Đã nạp file CLEAN V2.1.',
-    'File này không còn ghi đè FS_lapSheet02 / FS_lapSheet03 / FS_lapSheet00.',
-    'Hãy bảo đảm:',
-    '1) 02.Doanhthu.gs đã dán bản V2.0.',
-    '2) 03.Chiphi.gs đã dán bản V2.1.',
-    '3) File BoSungChiPhiSanPham... chỉ còn nội dung CLEAN này.'
+    'Đã nạp luồng FS V2.1 đã vá.',
+    'Sheet 03 đang dùng FS_lapSheet03_Patched.',
+    'Kiểm tra tiền đất được chạy trước khi ghi lại Sheet 03.',
+    'VAT hoàn âm cuối kỳ được giữ nguyên theo quy ước mô hình.'
   ].join('\n');
 
   SpreadsheetApp.getUi().alert(msg);
