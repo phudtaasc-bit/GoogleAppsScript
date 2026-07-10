@@ -23,7 +23,7 @@ function onOpen() {
     .addSeparator()
     .addItem('5. Độ nhạy nhanh', 'FS05_DoNhay_Fast')
     .addItem('6. Độ nhạy vốn CSH - NPV/IRR vốn', 'FS05B_DoNhay_CSH')
-    .addItem('6.1 Độ nhạy vốn CSH - Lãi suất & Vốn đầu tư', 'FS05C_DoNhay_CSH_LaiSuat_VonDauTu')
+    .addItem('6.1 Độ nhạy vốn CSH - Lãi suất & Vốn đầu tư', 'FS05D_DoNhay_CSH_LaiSuat_VonDauTu')
 
     .addToUi();
 }
