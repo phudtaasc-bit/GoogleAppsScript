@@ -116,9 +116,15 @@ function FS04_check() {
       issues.push(`Dòng ${rowNo} / tháng ${thang}: Tiền cuối kỳ chưa khớp tiền khả dụng trừ phân phối.`);
     }
 
-    const fcfeCalc = tienKhaDung - prevCash - cshGopMoi;
+    const fcfeCalc = fcff + giaiNganVay - traGoc;
     if (Math.abs(fcfe - fcfeCalc) > tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFE chưa khớp biến động tiền thuộc CSH sau trả nợ trừ vốn góp mới.`);
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFE ≠ FCFF + giải ngân vay - trả gốc.`);
+    }
+
+    // Kiểm tra tương đương đại số để phát hiện ghi nhận trùng tiền giữ lại.
+    const fcfeCashBridge = tienKhaDung - prevCash - cshGopMoi;
+    if (Math.abs(fcfe - fcfeCashBridge) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFE không khớp cầu nối biến động tiền khả dụng.`);
     }
 
     if (nhuCauVon > tol && traGoc > tol) {
