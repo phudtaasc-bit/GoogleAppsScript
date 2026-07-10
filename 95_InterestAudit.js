@@ -1,6 +1,6 @@
 /*************************************************
  * 95_InterestAudit.gs
- * Kiểm tra độc lập lãi vay, dư nợ và đồng bộ Sheet 03-04.
+ * Kiểm tra độc lập lãi vay, dư nợ, tiền giữ lại và đồng bộ Sheet 03-04.
  * Chỉ đọc dữ liệu; không thay đổi mô hình.
  *************************************************/
 
@@ -24,22 +24,26 @@ function FS_AUDIT_LAI_VAY() {
   const rows03 = Math.max(0, sh03.getLastRow() - 1);
   if (!rows04 || !rows03) throw new Error('Sheet 03 hoặc Sheet 04 chưa có dữ liệu.');
 
-  const data04 = sh04.getRange(3, 1, rows04, 25).getValues();
-  const data03 = sh03.getRange(2, 1, rows03, 29).getValues();
+  const data04 = sh04.getRange(3, 1, rows04, 26).getValues(); // A:Z
+  const data03 = sh03.getRange(2, 1, rows03, 31).getValues(); // A:AE
   const map03 = {};
 
   data03.forEach(r => {
     const t = Number(r[0]) || 0;
     if (!t) return;
     map03[t] = {
-      giaiNgan: FS95_num_(r[23]), // X
-      laiVay: FS95_num_(r[25]),  // Z
-      traGoc: FS95_num_(r[26]),  // AA
-      duNo: FS95_num_(r[28])     // AC
+      nhuCauVon: FS95_num_(r[20]), // U
+      vonCSH: FS95_num_(r[21]),    // V
+      giaiNgan: FS95_num_(r[23]),  // X
+      laiVay: FS95_num_(r[25]),    // Z
+      traGoc: FS95_num_(r[26]),    // AA
+      duNo: FS95_num_(r[28]),      // AC
+      tienCuoiKy: FS95_num_(r[30]) // AE
     };
   });
 
   let prevDebt = 0;
+  let prevCash = 0;
   let totalInterest = 0;
 
   data04.forEach((r, i) => {
@@ -47,36 +51,63 @@ function FS_AUDIT_LAI_VAY() {
     const t = Number(r[0]) || 0;
     if (!t) return;
 
-    const giaiNgan = FS95_num_(r[21]); // V
-    const laiVay = FS95_num_(r[22]);  // W
-    const traGoc = FS95_num_(r[23]);  // X
-    const duNo = FS95_num_(r[24]);    // Y
-    const expectedInterest = prevDebt * laiSuatThang;
-    const expectedDebt = Math.max(0, prevDebt + giaiNgan - traGoc);
+    const dongTienTruocTaiTro = FS95_num_(r[15]); // P
+    const nhuCauVon = FS95_num_(r[16]);           // Q
+    const vonCSH = FS95_num_(r[18]);              // S
+    const giaiNgan = FS95_num_(r[21]);            // V
+    const laiVay = FS95_num_(r[22]);              // W
+    const traGoc = FS95_num_(r[23]);               // X
+    const duNo = FS95_num_(r[24]);                 // Y
+    const tienCuoiKy = FS95_num_(r[25]);           // Z
 
+    const cashBeforeFunding = prevCash + dongTienTruocTaiTro;
+    const expectedNeed = Math.max(0, -cashBeforeFunding);
+    const expectedInterest = prevDebt * laiSuatThang;
+    const expectedPrincipal = Math.min(
+      prevDebt + giaiNgan + laiVay,
+      Math.max(0, cashBeforeFunding)
+    );
+    const expectedDebt = Math.max(0, prevDebt + giaiNgan + laiVay - traGoc);
+
+    if (Math.abs(nhuCauVon - expectedNeed) > tol) {
+      issues.push(`Sheet 04 dòng ${rowNo}: nhu cầu vốn chưa dùng đúng tiền đầu kỳ và dòng tiền trong tháng.`);
+    }
+    if (Math.abs(nhuCauVon - vonCSH - giaiNgan) > tol) {
+      issues.push(`Sheet 04 dòng ${rowNo}: nhu cầu vốn không khớp vốn CSH + giải ngân vay.`);
+    }
     if (Math.abs(laiVay - expectedInterest) > tol) {
       issues.push(`Sheet 04 dòng ${rowNo}: lãi vay chưa khớp dư nợ đầu kỳ × lãi suất tháng.`);
     }
+    if (Math.abs(traGoc - expectedPrincipal) > tol) {
+      issues.push(`Sheet 04 dòng ${rowNo}: trả gốc chưa khớp tiền dư và dư nợ sau vốn hóa lãi.`);
+    }
     if (Math.abs(duNo - expectedDebt) > tol) {
-      issues.push(`Sheet 04 dòng ${rowNo}: dư nợ cuối kỳ chưa khớp dư nợ đầu kỳ + giải ngân - trả gốc.`);
+      issues.push(`Sheet 04 dòng ${rowNo}: dư nợ cuối kỳ chưa khớp dư nợ đầu kỳ + giải ngân + lãi vay - trả gốc.`);
+    }
+    if (nhuCauVon > tol && traGoc > tol) {
+      issues.push(`Sheet 04 dòng ${rowNo}: vừa huy động vốn vừa trả gốc trong cùng kỳ.`);
     }
 
     const s03 = map03[t];
     if (!s03) {
       issues.push(`Tháng ${t}: không tìm thấy dòng tương ứng tại Sheet 03.`);
     } else {
+      if (Math.abs(s03.nhuCauVon - nhuCauVon) > tol) issues.push(`Tháng ${t}: nhu cầu vốn Sheet 03 chưa đồng bộ Sheet 04.`);
+      if (Math.abs(s03.vonCSH - vonCSH) > tol) issues.push(`Tháng ${t}: vốn CSH Sheet 03 chưa đồng bộ Sheet 04.`);
       if (Math.abs(s03.giaiNgan - giaiNgan) > tol) issues.push(`Tháng ${t}: giải ngân Sheet 03 chưa đồng bộ Sheet 04.`);
       if (Math.abs(s03.laiVay - laiVay) > tol) issues.push(`Tháng ${t}: lãi vay Sheet 03 chưa đồng bộ Sheet 04.`);
       if (Math.abs(s03.traGoc - traGoc) > tol) issues.push(`Tháng ${t}: trả gốc Sheet 03 chưa đồng bộ Sheet 04.`);
       if (Math.abs(s03.duNo - duNo) > tol) issues.push(`Tháng ${t}: dư nợ Sheet 03 chưa đồng bộ Sheet 04.`);
+      if (Math.abs(s03.tienCuoiKy - tienCuoiKy) > tol) issues.push(`Tháng ${t}: tiền cuối kỳ Sheet 03 chưa đồng bộ Sheet 04.`);
     }
 
-    if (giaiNgan < -tol || laiVay < -tol || traGoc < -tol || duNo < -tol) {
-      issues.push(`Sheet 04 dòng ${rowNo}: có giá trị tài trợ âm.`);
+    if ([nhuCauVon, vonCSH, giaiNgan, laiVay, traGoc, duNo, tienCuoiKy].some(v => v < -tol)) {
+      issues.push(`Sheet 04 dòng ${rowNo}: có giá trị tài trợ hoặc tiền âm.`);
     }
 
     totalInterest += laiVay;
     prevDebt = duNo;
+    prevCash = tienCuoiKy;
   });
 
   if (laiSuatNam <= 0 && totalInterest > tol) {
@@ -85,18 +116,21 @@ function FS_AUDIT_LAI_VAY() {
   if (laiSuatNam > 0 && prevDebt > tol) {
     warnings.push('Cuối mô hình vẫn còn dư nợ vay; cần xác nhận đây là giả định chủ động.');
   }
+  if (prevCash > tol) {
+    issues.push('Cuối mô hình vẫn còn tiền chưa phân phối cho CSH.');
+  }
 
   const report = [
     `KIỂM TRA LÃI VAY: ${issues.length} lỗi, ${warnings.length} cảnh báo.`,
     `Lãi suất năm: ${(laiSuatNam * 100).toFixed(4)}%.`,
-    `Tổng chi phí lãi vay: ${Math.round(totalInterest).toLocaleString('vi-VN')} đồng.`
+    `Tổng chi phí lãi vay vốn hóa: ${Math.round(totalInterest).toLocaleString('vi-VN')} đồng.`
   ];
   if (issues.length) report.push('\nLỖI:\n- ' + issues.join('\n- '));
   if (warnings.length) report.push('\nCẢNH BÁO:\n- ' + warnings.join('\n- '));
-  if (!issues.length && !warnings.length) report.push('\nKhông phát hiện bất thường về lãi vay và dư nợ.');
+  if (!issues.length && !warnings.length) report.push('\nKhông phát hiện bất thường về lãi vay, dư nợ và tiền giữ lại.');
 
   SpreadsheetApp.getUi().alert(report.join('\n'));
-  return { issues, warnings, totalInterest, endingDebt: prevDebt };
+  return { issues, warnings, totalInterest, endingDebt: prevDebt, endingCash: prevCash };
 }
 
 function FS95_num_(value) {
