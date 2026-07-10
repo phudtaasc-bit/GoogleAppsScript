@@ -89,6 +89,39 @@ function FS03_capNhatNguonVonTuSheet04_V2() {
   });
 
   sh03.getRange(2, 21, out.length, 11).setValues(out);
+  SpreadsheetApp.flush();
+  FS03Sync_assertWrittenState_(sh03, months03, out);
+}
+
+function FS03Sync_assertWrittenState_(sh03, months03, expected) {
+  const actual = sh03.getRange(2, 21, expected.length, 11).getValues();
+  const tolerance = 10;
+  const labels = [
+    'Nhu cầu vốn', 'Vốn góp CSH', 'Lũy kế vốn góp CSH',
+    'Giải ngân vay', 'Lũy kế giải ngân vay', 'Lãi vay',
+    'Trả gốc', 'Lũy kế trả gốc', 'Dư nợ cuối kỳ',
+    'Dòng tiền sau tài trợ', 'Tiền cuối kỳ'
+  ];
+  const errors = [];
+
+  for (let r = 0; r < expected.length; r++) {
+    const month = FS03Sync_num_(months03[r][0]) || r + 1;
+    for (let c = 0; c < 11; c++) {
+      const delta = Math.abs(FS03Sync_num_(actual[r][c]) - FS03Sync_num_(expected[r][c]));
+      if (delta > tolerance) {
+        errors.push(`Tháng ${month}: ${labels[c]} lệch ${Math.round(delta).toLocaleString('vi-VN')} đồng.`);
+        if (errors.length >= 20) break;
+      }
+    }
+    if (errors.length >= 20) break;
+  }
+
+  if (errors.length) {
+    throw new Error(
+      'Đồng bộ trạng thái tài trợ Sheet 04 → Sheet 03 không khớp:\n- ' +
+      errors.join('\n- ')
+    );
+  }
 }
 
 function FS03Sync_num_(value) {
