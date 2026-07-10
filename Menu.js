@@ -9,7 +9,7 @@ function onOpen() {
     .addItem('2. Lập sheet 02 - Doanh thu', 'FS_lapSheet02')
 
     .addSeparator()
-    .addItem('3. Lập sheet 03 - Chi phí & vốn vay', 'FS_lapSheet03')
+    .addItem('3. Lập sheet 03 - Chi phí & vốn vay', 'FS_lapSheet03_Safe')
     .addItem('3.1 Sheet 03 - Chế độ quản trị', 'FS03_viewQuanTri')
     .addItem('3.2 Sheet 03 - Hiển thị đầy đủ', 'FS03_viewDayDu')
     .addItem('3.3 Sheet 03 - Định dạng V2', 'FS03_formatV2')
@@ -19,7 +19,7 @@ function onOpen() {
     .addItem('4. Lập sheet 04 - Dòng tiền', 'FS_lapSheet04')
     .addItem('4.1 Sheet 04 - Kiểm tra logic', 'FS04_check')
     .addItem('4.2 Sheet 04A - Tổng hợp dòng tiền', 'FS_lapSheet04A')
-    .addItem('4.3. Chạy toàn bộ mô hình - có cập nhật lãi vay', 'FS_chayToanBoMoHinh_CoLaiVay')
+    .addItem('4.3. Chạy toàn bộ mô hình - có cập nhật lãi vay', 'FS_chayToanBoMoHinh_Safe')
     .addSeparator()
     .addItem('5. Độ nhạy nhanh', 'FS05_DoNhay_Fast')
     .addItem('6. Độ nhạy vốn CSH - NPV/IRR vốn', 'FS05B_DoNhay_CSH')
@@ -32,5 +32,5 @@ function onOpen() {
  * Luồng chạy chuẩn nằm tại BoSungChiPhiSanPham.js và có cập nhật lãi vay.
  */
 function FS_chayToanBo() {
-  return FS_chayToanBoMoHinh_CoLaiVay();
+  return FS_chayToanBoMoHinh_Safe();
 }
