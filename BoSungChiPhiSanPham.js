@@ -3,11 +3,11 @@
  *
  * Giữ nguyên các hàm lập Sheet 00/02/03/04 hiện có.
  * Luồng chạy sử dụng Sheet 03 đã vá và lặp Sheet 02-04
- * đến khi lãi vay, dư nợ hội tụ.
+ * đến khi toàn bộ trạng thái tài trợ hội tụ.
  *************************************************/
 
 const FS_FINANCE_ITERATION = {
-  maxIterations: 20,
+  maxIterations: 50,
   absoluteTolerance: 1000,
   relativeTolerance: 1e-8
 };
@@ -26,11 +26,7 @@ function FS_chayToanBoMoHinh_CoLaiVay() {
 
   const result = FS_hoiTuLaiVay_();
   if (!result.converged) {
-    throw new Error(
-      'Mô hình lãi vay chưa hội tụ sau ' + result.iterations + ' vòng. ' +
-      'Sai lệch lớn nhất còn lại: ' + Math.round(result.maxDelta).toLocaleString('vi-VN') + ' đồng. ' +
-      'Dừng trước khi lập các sheet tổng hợp để tránh sử dụng kết quả chưa ổn định.'
-    );
+    throw new Error(FS_moTaLoiHoiTu_(result));
   }
 
   FS94_assertCITConsistency_();
@@ -39,7 +35,7 @@ function FS_chayToanBoMoHinh_CoLaiVay() {
   FS93_runRegressionSuite_({ showAlert: false, throwOnError: true });
 
   ss.toast(
-    'Đã chạy xong toàn bộ mô hình; lãi vay hội tụ sau ' + result.iterations + ' vòng và kiểm thử hồi quy đạt.',
+    'Đã chạy xong toàn bộ mô hình; tài trợ hội tụ sau ' + result.iterations + ' vòng và kiểm thử hồi quy đạt.',
     'FS V2.1',
     10
   );
@@ -59,16 +55,13 @@ function FS_chayMoHinh_Buoc1() {
 
   const result = FS_hoiTuLaiVay_();
   if (!result.converged) {
-    throw new Error(
-      'Mô hình lãi vay chưa hội tụ sau ' + result.iterations + ' vòng. ' +
-      'Sai lệch lớn nhất còn lại: ' + Math.round(result.maxDelta).toLocaleString('vi-VN') + ' đồng.'
-    );
+    throw new Error(FS_moTaLoiHoiTu_(result));
   }
 
   FS94_assertCITConsistency_();
 
   ss.toast(
-    'Xong bước 1; lãi vay hội tụ sau ' + result.iterations + ' vòng. Chạy tiếp bước 2.',
+    'Xong bước 1; tài trợ hội tụ sau ' + result.iterations + ' vòng. Chạy tiếp bước 2.',
     'FS V2.1',
     10
   );
@@ -84,10 +77,7 @@ function FS_chayMoHinh_Buoc2() {
 
   const result = FS_hoiTuLaiVay_();
   if (!result.converged) {
-    throw new Error(
-      'Mô hình lãi vay chưa hội tụ sau ' + result.iterations + ' vòng. ' +
-      'Sai lệch lớn nhất còn lại: ' + Math.round(result.maxDelta).toLocaleString('vi-VN') + ' đồng.'
-    );
+    throw new Error(FS_moTaLoiHoiTu_(result));
   }
 
   FS94_assertCITConsistency_();
@@ -100,14 +90,25 @@ function FS_chayMoHinh_Buoc2() {
 
 /**
  * Lặp cố định giữa:
- * - Sheet 04: xác định lãi vay và dư nợ theo dòng tiền;
- * - Sheet 03: nhận lại nguồn vốn/lãi vay;
+ * - Sheet 04: engine xác định tài trợ, lãi vay vốn hóa, trả gốc và tiền giữ lại;
+ * - Sheet 03: nhận lại các chỉ tiêu tài trợ để phân bổ chi phí lãi vay;
  * - Sheet 02: phân bổ lãi vay vào giá vốn và tính Thuế TNDN;
- * - Sheet 04: tính lại dòng tiền, nhu cầu vốn và dư nợ.
+ * - Sheet 04: tính lại cash waterfall.
+ *
+ * Hội tụ chỉ được công nhận khi đồng thời ổn định:
+ * giải ngân, lãi vay, trả gốc, dư nợ và tiền cuối kỳ.
  */
 function FS_hoiTuLaiVay_() {
   let previous = FS_docTrangThaiTaiTro_();
-  let maxDelta = Infinity;
+  let comparison = {
+    maxDelta: Infinity,
+    drawDelta: Infinity,
+    interestDelta: Infinity,
+    principalDelta: Infinity,
+    debtDelta: Infinity,
+    cashDelta: Infinity
+  };
+  let tolerance = FS_FINANCE_ITERATION.absoluteTolerance;
 
   for (let iteration = 1; iteration <= FS_FINANCE_ITERATION.maxIterations; iteration++) {
     FS03_capNhatNguonVonTuSheet04();
@@ -116,76 +117,118 @@ function FS_hoiTuLaiVay_() {
     SpreadsheetApp.flush();
 
     const current = FS_docTrangThaiTaiTro_();
-    maxDelta = FS_saiLechTrangThaiTaiTro_(previous, current);
+    comparison = FS_saiLechTrangThaiTaiTro_(previous, current);
     const scale = Math.max(1, current.maxAbsoluteValue);
-    const tolerance = Math.max(
+    tolerance = Math.max(
       FS_FINANCE_ITERATION.absoluteTolerance,
       scale * FS_FINANCE_ITERATION.relativeTolerance
     );
 
-    if (maxDelta <= tolerance) {
+    if (comparison.maxDelta <= tolerance) {
       // Đồng bộ Sheet 03 lần cuối với trạng thái Sheet 04 đã hội tụ.
       FS03_capNhatNguonVonTuSheet04();
       SpreadsheetApp.flush();
-      return { converged: true, iterations: iteration, maxDelta, tolerance };
+      return Object.assign({
+        converged: true,
+        iterations: iteration,
+        tolerance: tolerance
+      }, comparison);
     }
 
     previous = current;
   }
 
-  return {
+  return Object.assign({
     converged: false,
     iterations: FS_FINANCE_ITERATION.maxIterations,
-    maxDelta,
-    tolerance: FS_FINANCE_ITERATION.absoluteTolerance
-  };
+    tolerance: tolerance
+  }, comparison);
 }
 
 function FS_docTrangThaiTaiTro_() {
   const ss = SpreadsheetApp.getActive();
   const sh04 = ss.getSheetByName('04. Dòng tiền & Lợi nhuận');
   if (!sh04 || sh04.getLastRow() < 3) {
-    throw new Error('Sheet 04 chưa có dữ liệu để kiểm tra hội tụ lãi vay.');
+    throw new Error('Sheet 04 chưa có dữ liệu để kiểm tra hội tụ tài trợ.');
   }
 
   const numRows = sh04.getLastRow() - 2;
-  const values = sh04.getRange(3, 22, numRows, 4).getValues(); // V:Y
+  const values = sh04.getRange(3, 22, numRows, 5).getValues(); // V:Z
   const vector = [];
+  const byMetric = [[], [], [], [], []];
   let maxAbsoluteValue = 0;
 
-  values.forEach(r => {
-    // Theo dõi giải ngân, lãi vay, trả gốc và dư nợ để tránh hội tụ giả.
-    r.forEach(v => {
+  values.forEach(row => {
+    row.forEach((v, metricIndex) => {
       const n = Number(v);
       const value = isFinite(n) ? n : 0;
       vector.push(value);
+      byMetric[metricIndex].push(value);
       maxAbsoluteValue = Math.max(maxAbsoluteValue, Math.abs(value));
     });
   });
 
-  return { vector, maxAbsoluteValue };
+  return {
+    vector: vector,
+    byMetric: byMetric,
+    maxAbsoluteValue: maxAbsoluteValue
+  };
 }
 
 function FS_saiLechTrangThaiTaiTro_(a, b) {
-  const n = Math.max(a.vector.length, b.vector.length);
-  let maxDelta = 0;
-  for (let i = 0; i < n; i++) {
-    const av = Number(a.vector[i]) || 0;
-    const bv = Number(b.vector[i]) || 0;
-    maxDelta = Math.max(maxDelta, Math.abs(av - bv));
-  }
-  return maxDelta;
+  const metricNames = [
+    'drawDelta',
+    'interestDelta',
+    'principalDelta',
+    'debtDelta',
+    'cashDelta'
+  ];
+  const result = { maxDelta: 0 };
+
+  metricNames.forEach((name, metricIndex) => {
+    const av = (a.byMetric && a.byMetric[metricIndex]) || [];
+    const bv = (b.byMetric && b.byMetric[metricIndex]) || [];
+    const n = Math.max(av.length, bv.length);
+    let metricDelta = 0;
+
+    for (let i = 0; i < n; i++) {
+      metricDelta = Math.max(
+        metricDelta,
+        Math.abs((Number(av[i]) || 0) - (Number(bv[i]) || 0))
+      );
+    }
+
+    result[name] = metricDelta;
+    result.maxDelta = Math.max(result.maxDelta, metricDelta);
+  });
+
+  return result;
+}
+
+function FS_moTaLoiHoiTu_(result) {
+  const fmt = value => Math.round(Number(value) || 0).toLocaleString('vi-VN');
+  return [
+    'Mô hình tài trợ chưa hội tụ sau ' + result.iterations + ' vòng.',
+    'Sai lệch lớn nhất: ' + fmt(result.maxDelta) + ' đồng.',
+    'Giải ngân: ' + fmt(result.drawDelta) + '; ' +
+      'Lãi vay: ' + fmt(result.interestDelta) + '; ' +
+      'Trả gốc: ' + fmt(result.principalDelta) + '; ' +
+      'Dư nợ: ' + fmt(result.debtDelta) + '; ' +
+      'Tiền cuối kỳ: ' + fmt(result.cashDelta) + ' đồng.',
+    'Dừng trước khi lập các sheet tổng hợp để tránh sử dụng kết quả chưa ổn định.'
+  ].join('\n');
 }
 
 /**
  * Chạy kiểm tra nhanh để phát hiện project còn patch cũ hay không.
  */
 function FS_V21_KiemTraNhanhSauKhiDan() {
-  const ss = SpreadsheetApp.getActive();
   const msg = [
-    'Đã nạp runner FS V2.1 có kiểm tra hội tụ lãi vay.',
+    'Đã nạp runner FS V2.1 có kiểm tra hội tụ tài trợ.',
     'Luồng chuẩn sử dụng FS_lapSheet03_Patched.',
-    'Vòng lặp dừng khi giải ngân, lãi vay, trả gốc và dư nợ ổn định.',
+    'Cơ cấu vốn áp dụng theo từng lần thiếu vốn (Cách A).',
+    'Vòng lặp dừng khi giải ngân, lãi vay, trả gốc, dư nợ và tiền cuối kỳ cùng ổn định.',
+    'Lãi vay được vốn hóa vào dư nợ.',
     'Thuế TNDN được kiểm tra riêng theo từng sản phẩm trước khi lập sheet tổng hợp.',
     'NPV dự án dùng WACC; NPV vốn CSH dùng chi phí vốn chủ sở hữu.',
     'Kiểm thử hồi quy được chạy sau khi lập Sheet 00.',
