@@ -49,6 +49,7 @@ function FS04_check() {
     const tienCuoiKy = FS04_checkNum_(r[25]);       // Z
     const fcff = FS04_checkNum_(r[35]);             // AJ
     const fcfe = FS04_checkNum_(r[36]);             // AK
+    const laKyCuoi = i === data.length - 1;
 
     if (Math.abs(tienKH - dtTruocVAT - vatDauRa) > tol) {
       issues.push(`Dòng ${rowNo} / tháng ${thang}: Dòng tiền huy động từ KH ≠ Doanh thu trước VAT + VAT đầu ra.`);
@@ -88,7 +89,10 @@ function FS04_check() {
       issues.push(`Dòng ${rowNo} / tháng ${thang}: Dư nợ cuối kỳ chưa khớp dư nợ đầu kỳ + giải ngân - trả gốc.`);
     }
 
-    if (vatPhaiNop < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: VAT phải nộp âm; cần kiểm tra giả định hoàn VAT.`);
+    // VAT âm chỉ hợp lệ ở kỳ cuối và được hiểu là khoản hoàn thuế.
+    if (vatPhaiNop < -tol && !laKyCuoi) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: VAT phải nộp âm ngoài kỳ cuối; cần kiểm tra bù trừ VAT.`);
+    }
     if (thueTNDN < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Thuế TNDN âm.`);
     if (giaVon < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng giá vốn tính thuế âm.`);
     if (nhuCauVon < -tol || cshGopMoi < -tol || giaiNganVay < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Nhu cầu vốn, vốn CSH hoặc giải ngân vay âm.`);
