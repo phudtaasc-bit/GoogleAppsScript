@@ -20,29 +20,41 @@ function FS96_auditDinhGia() {
   const data = sh04.getRange(3, 1, lastRow - 2, 39).getValues();
   let coAmFCFF = false, coDuongFCFF = false;
   let coAmFCFE = false, coDuongFCFE = false;
+  let prevCash = 0;
 
   data.forEach((r, i) => {
     const rowNo = i + 3;
-    const p = FS96_num_(r[15]); // P - dòng tiền trước tài trợ
-    const rDist = FS96_num_(r[17]); // R - phân phối cho CSH
-    const sEquity = FS96_num_(r[18]); // S - CSH góp mới
-    const tRecall = FS96_num_(r[19]); // T - CSH nộp lại
-    const ajFCFF = FS96_num_(r[35]); // AJ
-    const akFCFE = FS96_num_(r[36]); // AK
+    const p = FS96_num_(r[15]);        // P - Dòng tiền trước tài trợ / FCFF
+    const sEquity = FS96_num_(r[18]);  // S - CSH góp mới
+    const vDraw = FS96_num_(r[21]);    // V - Giải ngân vay
+    const xPrincipal = FS96_num_(r[23]); // X - Trả gốc
+    const zCashEnd = FS96_num_(r[25]); // Z - Tiền cuối kỳ sau phân phối
+    const aaAvailable = FS96_num_(r[26]); // AA - Tiền khả dụng sau trả nợ
+    const ajFCFF = FS96_num_(r[35]);   // AJ
+    const akFCFE = FS96_num_(r[36]);   // AK
 
     if (Math.abs(ajFCFF - p) > tol) {
       issues.push(`Dòng ${rowNo}: FCFF không bằng Dòng tiền trước tài trợ.`);
     }
 
-    const fcfeExpected = rDist - sEquity - tRecall;
+    // Lãi vay được vốn hóa nên không phải dòng tiền chi trong kỳ.
+    const fcfeExpected = ajFCFF + vDraw - xPrincipal;
     if (Math.abs(akFCFE - fcfeExpected) > tol) {
-      issues.push(`Dòng ${rowNo}: FCFE không bằng Phân phối cho CSH - CSH góp mới - CSH nộp lại.`);
+      issues.push(`Dòng ${rowNo}: FCFE không bằng FCFF + Giải ngân vay - Trả gốc.`);
+    }
+
+    // Cầu nối độc lập để phát hiện ghi nhận trùng tiền giữ lại.
+    const fcfeCashBridge = aaAvailable - prevCash - sEquity;
+    if (Math.abs(akFCFE - fcfeCashBridge) > tol) {
+      issues.push(`Dòng ${rowNo}: FCFE không khớp biến động tiền khả dụng trừ vốn CSH góp mới.`);
     }
 
     if (ajFCFF < -tol) coAmFCFF = true;
     if (ajFCFF > tol) coDuongFCFF = true;
     if (akFCFE < -tol) coAmFCFE = true;
     if (akFCFE > tol) coDuongFCFE = true;
+
+    prevCash = zCashEnd;
   });
 
   if (!(coAmFCFF && coDuongFCFF)) {
@@ -60,7 +72,8 @@ function FS96_auditDinhGia() {
   const rateEquity = FS96_findInfo_(tech, [
     'Chi phí vốn chủ sở hữu',
     'Tỷ suất chiết khấu vốn CSH',
-    'Tỷ suất chiết khấu FCFE'
+    'Tỷ suất chiết khấu FCFE',
+    'Tỷ suất chiết khấu'
   ]);
 
   if (!rateProject.found) {
