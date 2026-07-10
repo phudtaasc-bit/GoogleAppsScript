@@ -2,7 +2,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('FS - CẬP NHẬT MÔ HÌNH')
 
-    .addItem('0. Lập sheet 00 - Tổng hợp', 'FS_lapSheet00_Patched')
+    .addItem('0. Lập sheet 00 - Tổng hợp', 'FS_lapSheet00')
     .addItem('1. Tạo lại sheet Kỹ thuật từ Đầu vào', 'FS_taoKyThuatTuDauVao')
 
     .addSeparator()
