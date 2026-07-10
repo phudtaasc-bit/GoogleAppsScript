@@ -1,11 +1,11 @@
-# Audit baseline — Financial model logic
+# Audit status — Financial model logic
 
 Date: 2026-07-10
 Branch: `audit-financial-logic-20260710`
 
 ## Scope
 
-Audit and patch the existing Apps Script source without rebuilding the model, deleting input data, or changing the user interface unless an entry-point conflict prevents the current code from running.
+Audit and patch the existing Apps Script source without rebuilding the model, deleting input data, or changing the user interface unless an entry-point conflict or a validation requirement makes a change necessary.
 
 ## Data-preservation invariants
 
@@ -15,6 +15,7 @@ Audit and patch the existing Apps Script source without rebuilding the model, de
 4. Keep backward-compatible aliases when standardizing terminology.
 5. Patch one logical defect group per commit.
 6. Preserve the current final-period VAT refund treatment: negative VAT payable represents the refund of the remaining deductible VAT balance.
+7. Thuế TNDN is calculated separately by output product; taxable profit and Thuế TNDN are never negative and no loss offset is applied between products or months.
 
 ## Canonical terminology
 
@@ -43,60 +44,83 @@ Legacy labels remain accepted as input aliases to avoid data loss.
 
 - The final-period negative VAT payable is intentional.
 - It represents the cash refund of the remaining deductible VAT balance.
-- The patch must preserve this treatment in Sheet 03, Sheet 04, summary reports, and sensitivity calculations.
-- Validation only reports an error when the refund amount does not equal the remaining deductible VAT balance.
+- Validation reports an error only when the refund occurs before the final period or the amount does not reconcile with the remaining deductible VAT balance.
 
-## High-priority findings
+### Thuế TNDN
 
-### P0 — execution and global-function conflicts
+- Thuế TNDN is determined for each product output.
+- Taxable profit is `MAX(0, revenue - deductible product cost)`.
+- No negative Thuế TNDN is generated.
+- No loss carryforward or cross-product loss offset is applied in this model.
+- Sheet 03 and Sheet 04 receive the monthly aggregate from Sheet 02.
 
-- Multiple global definitions exist for `onOpen`, `FS05B_DoNhay_CSH`, `FS_chayMoHinh_Buoc1`, and `FS_chayMoHinh_Buoc2`.
-- The `Menu.js` implementation of `FS05B_DoNhay_CSH` calls an undefined function and overrides the valid batch implementation.
-- Existing full-model runners use inconsistent dependency orders although Sheet 02 and Sheet 03 depend on each other through allocated interest.
+### Discount rates
 
-### P0 — VAT
+- FCFF / NPV project uses WACC.
+- FCFE / NPV equity uses the cost of equity input (`Tỷ suất chiết khấu`).
+- Monthly discounting uses the effective monthly equivalent of the annual rate.
+- Monthly IRR is annualized on an effective basis.
 
-- The final-period VAT refund treatment is approved and must be retained.
-- The VAT checker previously rejected negative VAT payable, contradicting the approved generation logic; the independent audit checker now accepts and validates it.
-- VAT input on selling costs is omitted in Sheet 03.
-- Direct construction VAT is initialized at zero even though the common-cost block supports a VAT rate.
-- The sensitivity engine must reproduce the same final-period VAT refund treatment as the base model.
+## Completed patches
 
-### P0 — land costs
+### Execution and entry points
 
-- Separate land-cost schedules can each apply the full aggregate land-cost pool because all specific names are matched to one merged `Tiền SDĐ/thuê đất` category.
-- This creates a material double-counting risk when Liền kề, Chung cư, TMDV, and Chợ have separate schedule rows.
-- Product classification depends on free-text product names; canonical aliases are required without changing existing data.
+- Removed broken duplicate global entry points.
+- Preserved backward-compatible aliases.
+- Standardized the model runner order.
 
-### P1 — interest, FCFF and FCFE
+### VAT
 
-- Interest is calculated from opening debt, then allocated back to products through a fixed two-pass rebuild; no convergence control exists.
-- FCFF is the pre-financing operating cash flow and FCFE is shareholder distributions less equity contributions, but checkers use stale column mappings.
-- The Sheet 04 checker reads only 32 of 39 columns and misidentifies financing columns.
+- Preserved final-period VAT refund treatment.
+- Added input VAT on construction & equipment costs.
+- Added input VAT on selling costs.
+- Added cross-sheet VAT validation.
 
-### P1 — NPV and IRR
+### Tiền SDĐ / Tiền thuê đất
 
-- FCFF and FCFE are discounted using the same input rate.
-- The model does not distinguish project discount rate/WACC from cost of equity.
-- Monthly IRR annualization is consistent, but the sensitivity engines must use the same timing convention as the base model.
+- Separated pools for Liền kề, Chung cư, TMDV, and Chợ.
+- Added fallback compatibility for the legacy aggregate land-cost row.
+- Added a blocking guard for duplicate or over-allocated land-cost configurations.
 
-### P1 — Thuế TNDN
+### Interest and financing
 
-- Taxable profit is floored at zero by month/product with no loss carryforward balance.
-- The sensitivity engine uses a simplified revenue-weighted tax allocation that does not reproduce the base tax logic.
+- Replaced the fixed two-pass rebuild with convergence iteration.
+- Convergence tracks loan drawdown, interest, principal repayment, and closing debt by month.
+- The model stops before summary generation if convergence is not reached.
 
-### P1 — selling costs
+### Thuế TNDN
 
-- Selling costs are calculated only for sale products, which is appropriate, but VAT treatment differs between the base model and the sensitivity engine.
+- Added product-level formula validation.
+- Added monthly reconciliation between Sheet 02, Sheet 03, and Sheet 04.
+- Added a blocking guard before summary generation.
 
-## Planned commit sequence
+### FCFF / FCFE / NPV / IRR
 
-1. Audit baseline and invariants.
-2. Remove broken duplicate entry points while preserving the visible menu.
-3. Add non-destructive validation and record approved VAT refund treatment.
-4. Repair selling-cost VAT and construction VAT while preserving final-period refund logic.
-5. Separate land-cost pools and schedules by canonical category.
-6. Stabilize interest iteration and financing checks.
-7. Align FCFF/FCFE, NPV/IRR rates, timing, and validation.
-8. Align Thuế TNDN and sensitivity calculations with the base model.
-9. Add regression checks and final audit report.
+- Corrected stale Sheet 04 column mappings.
+- Validated FCFF against pre-financing cash flow.
+- Validated FCFE against shareholder cash movements used by the current model.
+- Changed NPV project to WACC and NPV equity to cost of equity.
+- Preserved effective annualization of monthly IRR.
+
+### Sensitivity
+
+- Added NPV/IRR equity sensitivity to loan interest rate.
+- Added NPV/IRR equity sensitivity to investment cost.
+- Both new groups read the same scenario levels used by the existing project sensitivity table.
+- Input values and formulas are restored in `finally` blocks after each sensitivity run.
+
+### Regression validation
+
+- Added end-to-end checks for Sheet 00, 02, 03, and 04.
+- Added checks for VAT, Thuế TNDN, financing, FCFF, FCFE, NPV, and IRR formulas.
+- The full model runner blocks completion when regression validation fails.
+- Added menu command `7. Kiểm thử hồi quy toàn mô hình` for manual validation.
+
+## Remaining before merge
+
+1. Run the full model and the regression suite on the live Google Sheet project.
+2. Run both existing and new sensitivity modules on the live model.
+3. Confirm no formula or input restoration errors occur after sensitivity runs.
+4. Consolidate stable patch logic into core files where this can be done without introducing replacement risk.
+5. Remove superseded patch files only after the live-model tests pass.
+6. Merge to `main` only after all blocking checks pass.
