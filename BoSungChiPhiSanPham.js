@@ -33,6 +33,7 @@ function FS_chayToanBoMoHinh_CoLaiVay() {
     );
   }
 
+  FS94_assertCITConsistency_();
   FS_lapSheet04A();
   FS_lapSheet00();
 
@@ -63,6 +64,8 @@ function FS_chayMoHinh_Buoc1() {
     );
   }
 
+  FS94_assertCITConsistency_();
+
   ss.toast(
     'Xong bước 1; lãi vay hội tụ sau ' + result.iterations + ' vòng. Chạy tiếp bước 2.',
     'FS V2.1',
@@ -86,6 +89,7 @@ function FS_chayMoHinh_Buoc2() {
     );
   }
 
+  FS94_assertCITConsistency_();
   FS_lapSheet04A();
   FS_lapSheet00();
 
@@ -180,8 +184,10 @@ function FS_V21_KiemTraNhanhSauKhiDan() {
     'Đã nạp runner FS V2.1 có kiểm tra hội tụ lãi vay.',
     'Luồng chuẩn sử dụng FS_lapSheet03_Patched.',
     'Vòng lặp dừng khi giải ngân, lãi vay, trả gốc và dư nợ ổn định.',
+    'Thuế TNDN được kiểm tra riêng theo từng sản phẩm trước khi lập sheet tổng hợp.',
     'Số vòng tối đa: ' + FS_FINANCE_ITERATION.maxIterations + '.',
     'Sai số tuyệt đối tối thiểu: ' + FS_FINANCE_ITERATION.absoluteTolerance.toLocaleString('vi-VN') + ' đồng.'
   ].join('\n');
+
   SpreadsheetApp.getUi().alert(msg);
 }
