@@ -20,10 +20,14 @@ function onOpen() {
     .addItem('4.1 Sheet 04 - Kiểm tra logic', 'FS04_check')
     .addItem('4.2 Sheet 04A - Tổng hợp dòng tiền', 'FS_lapSheet04A')
     .addItem('4.3. Chạy toàn bộ mô hình - có cập nhật lãi vay', 'FS_chayToanBoMoHinh_Safe')
+
     .addSeparator()
     .addItem('5. Độ nhạy nhanh', 'FS05_DoNhay_Fast')
     .addItem('6. Độ nhạy vốn CSH - NPV/IRR vốn', 'FS05B_DoNhay_CSH')
     .addItem('6.1 Độ nhạy vốn CSH - Lãi suất & Vốn đầu tư', 'FS05D_DoNhay_CSH_LaiSuat_VonDauTu')
+
+    .addSeparator()
+    .addItem('7. Kiểm thử hồi quy toàn mô hình', 'FS93_RunRegressionSuite')
 
     .addToUi();
 }
