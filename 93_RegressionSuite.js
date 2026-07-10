@@ -185,25 +185,61 @@ function FS93_checkSheetLinks_(sh02, sh03, sh04, issues, tol) {
     citByMonth[m] = (citByMonth[m] || 0) + FS93_num_(r[31]);
   });
 
-  const rows03 = sh03.getRange(2, 1, Math.min(months, Math.max(0, sh03.getLastRow() - 1)), 35).getValues();
-  const rows04 = sh04.getRange(3, 1, Math.min(months, Math.max(0, sh04.getLastRow() - 2)), 39).getValues();
+  const count03 = Math.min(months, Math.max(0, sh03.getLastRow() - 1));
+  const count04 = Math.min(months, Math.max(0, sh04.getLastRow() - 2));
+  const rows03 = sh03.getRange(2, 1, count03, 35).getValues();
+  const rows04 = sh04.getRange(3, 1, count04, 39).getValues();
   const n = Math.min(rows03.length, rows04.length);
 
+  let cumulativeEquity = 0;
+  let cumulativeDraw = 0;
+  let cumulativePrincipal = 0;
+  let previousCash = 0;
+
+  const links = [
+    { name: 'Nhu cầu vốn', col03: 20, get04: r => FS93_num_(r[16]) },
+    { name: 'Vốn góp CSH', col03: 21, get04: r => FS93_num_(r[18]) },
+    { name: 'Lũy kế vốn góp CSH', col03: 22, get04: () => cumulativeEquity },
+    { name: 'Giải ngân vay', col03: 23, get04: r => FS93_num_(r[21]) },
+    { name: 'Lũy kế giải ngân vay', col03: 24, get04: () => cumulativeDraw },
+    { name: 'Lãi vay vốn hóa', col03: 25, get04: r => FS93_num_(r[22]) },
+    { name: 'Trả gốc', col03: 26, get04: r => FS93_num_(r[23]) },
+    { name: 'Lũy kế trả gốc', col03: 27, get04: () => cumulativePrincipal },
+    { name: 'Dư nợ cuối kỳ', col03: 28, get04: r => FS93_num_(r[24]) },
+    { name: 'Dòng tiền sau tài trợ', col03: 29, get04: r => FS93_num_(r[25]) - previousCash },
+    { name: 'Tiền cuối kỳ', col03: 30, get04: r => FS93_num_(r[25]) }
+  ];
+
   for (let i = 0; i < n; i++) {
-    const month = i + 1;
+    const r03 = rows03[i];
+    const r04 = rows04[i];
+    const month = FS93_num_(r03[0]) || FS93_num_(r04[0]) || (i + 1);
+
     const cit02 = citByMonth[month] || 0;
-    const cit03 = FS93_num_(rows03[i][6]);
-    const cit04 = FS93_num_(rows04[i][11]);
+    const cit03 = FS93_num_(r03[6]);
+    const cit04 = FS93_num_(r04[11]);
     if (Math.abs(cit02 - cit03) > tol || Math.abs(cit02 - cit04) > tol) {
       issues.push('Tháng ' + month + ': Thuế TNDN Sheet 02–03–04 không khớp.');
     }
 
-    [23, 25, 26, 28].forEach((col03, j) => {
-      const col04 = [21, 22, 23, 24][j];
-      if (Math.abs(FS93_num_(rows03[i][col03]) - FS93_num_(rows04[i][col04])) > tol) {
-        issues.push('Tháng ' + month + ': Dữ liệu tài trợ Sheet 03–04 không khớp tại nhóm cột ' + (j + 1) + '.');
+    cumulativeEquity += FS93_num_(r04[18]);
+    cumulativeDraw += FS93_num_(r04[21]);
+    cumulativePrincipal += FS93_num_(r04[23]);
+
+    links.forEach(link => {
+      const actual03 = FS93_num_(r03[link.col03]);
+      const expected04 = link.get04(r04);
+      if (Math.abs(actual03 - expected04) > tol) {
+        issues.push(
+          'Tháng ' + month + ': ' + link.name +
+          ' Sheet 03–04 không khớp (' +
+          Math.round(actual03).toLocaleString('vi-VN') + ' / ' +
+          Math.round(expected04).toLocaleString('vi-VN') + ').'
+        );
       }
     });
+
+    previousCash = FS93_num_(r04[25]);
   }
 }
 
