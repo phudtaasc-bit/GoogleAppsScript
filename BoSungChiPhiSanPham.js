@@ -2,7 +2,7 @@
  * FS V2.1 - MODEL RUNNER
  *
  * Giữ nguyên các hàm lập Sheet 00/02/03/04 hiện có.
- * Luồng chạy sử dụng Sheet 03 đã vá và lặp Sheet 02-04
+ * Luồng chạy sử dụng Sheet 03 chỉ tính chi phí/VAT và lặp Sheet 02-04
  * đến khi toàn bộ trạng thái tài trợ hội tụ.
  *************************************************/
 
@@ -19,7 +19,7 @@ function FS_chayToanBoMoHinh_CoLaiVay() {
   FS_taoKyThuatTuDauVao();
   FS97_assertLandCostConfig_();
 
-  FS_lapSheet03_Patched();
+  FS_lapSheet03_CostOnly();
   FS_lapSheet02();
   FS_lapSheet04();
   SpreadsheetApp.flush();
@@ -48,7 +48,7 @@ function FS_chayMoHinh_Buoc1() {
   FS_taoKyThuatTuDauVao();
   FS97_assertLandCostConfig_();
 
-  FS_lapSheet03_Patched();
+  FS_lapSheet03_CostOnly();
   FS_lapSheet02();
   FS_lapSheet04();
   SpreadsheetApp.flush();
@@ -225,7 +225,7 @@ function FS_moTaLoiHoiTu_(result) {
 function FS_V21_KiemTraNhanhSauKhiDan() {
   const msg = [
     'Đã nạp runner FS V2.1 có kiểm tra hội tụ tài trợ.',
-    'Luồng chuẩn sử dụng FS_lapSheet03_Patched.',
+    'Luồng chuẩn khởi tạo Sheet 03 ở chế độ chỉ tính chi phí/VAT.',
     'Cơ cấu vốn áp dụng theo từng lần thiếu vốn (Cách A).',
     'Sheet 04 là nguồn tính toán duy nhất; Sheet 03 nhận lại toàn bộ khối tài trợ U:AE.',
     'Vòng lặp dừng khi giải ngân, lãi vay, trả gốc, dư nợ và tiền cuối kỳ cùng ổn định.',
