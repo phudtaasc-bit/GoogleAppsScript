@@ -26,38 +26,11 @@ function onOpen() {
 
     .addToUi();
 }
-function FS05B_DoNhay_CSH() {
-  boSungDoNhay_NPV_IRR_VonCSH();
-}
+
+/**
+ * Alias tương thích cho các nút hoặc trigger cũ.
+ * Luồng chạy chuẩn nằm tại BoSungChiPhiSanPham.js và có cập nhật lãi vay.
+ */
 function FS_chayToanBo() {
-  FS_taoKyThuatTuDauVao();
-  FS_lapSheet02();
-  FS_lapSheet03();
-  FS_lapSheet04();
-  FS_lapSheet00();
-  SpreadsheetApp.getUi().alert('Đã cập nhật toàn bộ mô hình.');
-}
-function FS_chayMoHinh_Buoc1() {
-  const ss = SpreadsheetApp.getActive();
-  ss.toast('Đang chạy bước 1...', 'FS', 5);
-
-  FS_taoKyThuatTuDauVao();
-  FS_lapSheet03();
-  FS_lapSheet02();
-  FS_lapSheet04();
-  FS03_capNhatNguonVonTuSheet04();
-
-  ss.toast('Xong bước 1. Chạy tiếp 4.3B.', 'FS', 10);
-}
-
-function FS_chayMoHinh_Buoc2() {
-  const ss = SpreadsheetApp.getActive();
-  ss.toast('Đang chạy bước 2...', 'FS', 5);
-
-  FS_lapSheet02();
-  FS_lapSheet04();
-  FS_lapSheet04A();
-  FS_lapSheet00();
-
-  ss.toast('Đã chạy xong toàn bộ mô hình.', 'FS', 10);
+  return FS_chayToanBoMoHinh_CoLaiVay();
 }
