@@ -73,7 +73,7 @@ function FS97_assertLandCostConfig_() {
 
 function FS_lapSheet03_Safe() {
   FS97_assertLandCostConfig_();
-  return FS_lapSheet03();
+  return FS_lapSheet03_Patched();
 }
 
 function FS_chayToanBoMoHinh_Safe() {
