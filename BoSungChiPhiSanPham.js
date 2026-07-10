@@ -35,7 +35,7 @@ function FS_chayToanBoMoHinh_CoLaiVay() {
 
   FS94_assertCITConsistency_();
   FS_lapSheet04A();
-  FS_lapSheet00();
+  FS_lapSheet00_Patched();
 
   ss.toast(
     'Đã chạy xong toàn bộ mô hình; lãi vay hội tụ sau ' + result.iterations + ' vòng.',
@@ -91,7 +91,7 @@ function FS_chayMoHinh_Buoc2() {
 
   FS94_assertCITConsistency_();
   FS_lapSheet04A();
-  FS_lapSheet00();
+  FS_lapSheet00_Patched();
 
   ss.toast('Đã chạy xong bước 2.', 'FS V2.1', 10);
 }
@@ -185,6 +185,7 @@ function FS_V21_KiemTraNhanhSauKhiDan() {
     'Luồng chuẩn sử dụng FS_lapSheet03_Patched.',
     'Vòng lặp dừng khi giải ngân, lãi vay, trả gốc và dư nợ ổn định.',
     'Thuế TNDN được kiểm tra riêng theo từng sản phẩm trước khi lập sheet tổng hợp.',
+    'NPV dự án dùng WACC; NPV vốn CSH dùng chi phí vốn chủ sở hữu.',
     'Số vòng tối đa: ' + FS_FINANCE_ITERATION.maxIterations + '.',
     'Sai số tuyệt đối tối thiểu: ' + FS_FINANCE_ITERATION.absoluteTolerance.toLocaleString('vi-VN') + ' đồng.'
   ].join('\n');
