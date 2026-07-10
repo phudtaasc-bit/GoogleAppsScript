@@ -36,9 +36,14 @@ function FS_lapSheet00() {
   const s03 = `'03. Chi phí & Vốn'`;
   const s04 = `'04. Dòng tiền & Lợi nhuận'`;
 
-  const discountA1 = FS00_getInfoCellA1_(tech, 'Tỷ suất chiết khấu') || 'B6';
+  const equityRateA1 = FS00_getInfoCellA1_(tech, 'Tỷ suất chiết khấu');
   const loanRateA1 = FS00_getInfoCellA1_(tech, 'Lãi suất vay năm') || 'B13';
-  const monthlyRate = `((1+${techName}!${discountA1})^(1/12)-1)`;
+  if (!equityRateA1) {
+    throw new Error('Thiếu "Tỷ suất chiết khấu" dùng cho FCFE tại 01. Kỹ thuật.');
+  }
+
+  const monthlyWacc = `((1+$E$21)^(1/12)-1)`;
+  const monthlyCostOfEquity = `((1+${techName}!${equityRateA1})^(1/12)-1)`;
 
   const vatBase =
     `(SUM(${s03}!H3:H)+SUM(${s03}!K3:K)+SUM(${s03}!L3:L)+SUM(${s03}!M3:M))`;
@@ -94,7 +99,7 @@ function FS_lapSheet00() {
   sh.getRange('D17:D19').setFormulaR1C1('=IF(R20C3=0;0;RC[-1]/R20C3)');
   sh.getRange('D20').setFormula('=100%');
 
-  sh.getRange('E17').setFormula(`=${techName}!${discountA1}`);
+  sh.getRange('E17').setFormula(`=${techName}!${equityRateA1}`);
   sh.getRange('E18').setFormula(`=${techName}!${loanRateA1}`);
   sh.getRange('E19').setValue(0);
   sh.getRange('E21').setFormula('=IF(C20=0;0;SUMPRODUCT(C17:C19;E17:E19)/C20)');
@@ -111,11 +116,11 @@ function FS_lapSheet00() {
     ['2.1', 'Tổng vốn đầu tư dự án', 'tỷ đồng', '', ''],
     ['2.2', 'Chi phí bán hàng', 'tỷ đồng', '', ''],
     ['3', 'Lợi nhuận sau thuế', 'tỷ đồng', '', ''],
-    ['4', 'NPV dự án', 'tỷ đồng', '', 'Quan điểm Tổng đầu tư - FCFF'],
-    ['5', 'IRR dự án', '%', '', 'Quan điểm Tổng đầu tư - FCFF'],
+    ['4', 'NPV dự án', 'tỷ đồng', '', 'FCFF chiết khấu theo WACC'],
+    ['5', 'IRR dự án', '%', '', 'IRR tháng quy đổi năm hiệu dụng'],
     ['6', 'Thời gian hoàn vốn dự án', 'tháng', '', 'Theo FCFF lũy kế'],
-    ['7', 'NPV vốn CSH', 'tỷ đồng', '', 'Quan điểm Chủ sở hữu - FCFE'],
-    ['8', 'IRR vốn CSH', '%', '', 'Quan điểm Chủ sở hữu - FCFE'],
+    ['7', 'NPV vốn CSH', 'tỷ đồng', '', 'FCFE chiết khấu theo chi phí vốn CSH'],
+    ['8', 'IRR vốn CSH', '%', '', 'IRR tháng quy đổi năm hiệu dụng'],
     ['9', 'Thời gian hoàn vốn - Vốn CSH', 'tháng', '', 'Theo FCFE lũy kế'],
     ['10', 'Đỉnh dư nợ vay', 'tỷ đồng', '', ''],
     ['11', 'Tổng lãi vay', 'tỷ đồng', '', ''],
@@ -133,11 +138,11 @@ function FS_lapSheet00() {
   sh.getRange('D31').setFormula(`=(SUM(${s03}!L3:L)+${vatAlloc('L')})/1000000000`);
   sh.getRange('D32').setFormula(`=SUM(${s04}!O3:O${endRow04})/1000000000`);
 
-  sh.getRange('D33').setFormula(`=IFERROR(NPV(${monthlyRate};${s04}!AJ3:AJ${endRow04})/1000000000;0)`);
+  sh.getRange('D33').setFormula(`=IFERROR(NPV(${monthlyWacc};${s04}!AJ3:AJ${endRow04})/1000000000;0)`);
   sh.getRange('D34').setFormula(`=IFERROR((1+IRR(${s04}!AJ3:AJ${endRow04}))^12-1;0)`);
   sh.getRange('D35').setValue('');
 
-  sh.getRange('D36').setFormula(`=IFERROR(NPV(${monthlyRate};${s04}!AK3:AK${endRow04})/1000000000;0)`);
+  sh.getRange('D36').setFormula(`=IFERROR(NPV(${monthlyCostOfEquity};${s04}!AK3:AK${endRow04})/1000000000;0)`);
   sh.getRange('D37').setFormula(`=IFERROR((1+IRR(${s04}!AK3:AK${endRow04}))^12-1;0)`);
   sh.getRange('D38').setValue('');
 
