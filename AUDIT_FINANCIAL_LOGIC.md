@@ -14,7 +14,7 @@ Audit and patch the existing Apps Script source without rebuilding the model, de
 3. Preserve current public function names unless a duplicate global definition is the defect being fixed.
 4. Keep backward-compatible aliases when standardizing terminology.
 5. Patch one logical defect group per commit.
-6. Do not assume VAT refunds, tax incentives, or financing terms unless the model contains an explicit input.
+6. Preserve the current final-period VAT refund treatment: negative VAT payable represents the refund of the remaining deductible VAT balance.
 
 ## Canonical terminology
 
@@ -37,6 +37,15 @@ Audit and patch the existing Apps Script source without rebuilding the model, de
 
 Legacy labels remain accepted as input aliases to avoid data loss.
 
+## Confirmed model decisions
+
+### VAT refund
+
+- The final-period negative VAT payable is intentional.
+- It represents the cash refund of the remaining deductible VAT balance.
+- The patch must preserve this treatment in Sheet 03, Sheet 04, summary reports, and sensitivity calculations.
+- Validation only reports an error when the refund amount does not equal the remaining deductible VAT balance.
+
 ## High-priority findings
 
 ### P0 — execution and global-function conflicts
@@ -47,11 +56,11 @@ Legacy labels remain accepted as input aliases to avoid data loss.
 
 ### P0 — VAT
 
-- Sheet 03 converts the remaining deductible VAT balance in the last model month into negative VAT payable, which implicitly assumes a full refund.
-- The VAT checker rejects negative VAT payable, contradicting the generation logic.
+- The final-period VAT refund treatment is approved and must be retained.
+- The VAT checker previously rejected negative VAT payable, contradicting the approved generation logic; the independent audit checker now accepts and validates it.
 - VAT input on selling costs is omitted in Sheet 03.
 - Direct construction VAT is initialized at zero even though the common-cost block supports a VAT rate.
-- The sensitivity engine repeats the implicit final-period VAT refund assumption.
+- The sensitivity engine must reproduce the same final-period VAT refund treatment as the base model.
 
 ### P0 — land costs
 
@@ -84,9 +93,9 @@ Legacy labels remain accepted as input aliases to avoid data loss.
 
 1. Audit baseline and invariants.
 2. Remove broken duplicate entry points while preserving the visible menu.
-3. Repair VAT accounting and VAT validation.
-4. Separate land-cost pools and schedules by canonical category.
-5. Repair selling-cost VAT and construction VAT.
+3. Add non-destructive validation and record approved VAT refund treatment.
+4. Repair selling-cost VAT and construction VAT while preserving final-period refund logic.
+5. Separate land-cost pools and schedules by canonical category.
 6. Stabilize interest iteration and financing checks.
 7. Align FCFF/FCFE, NPV/IRR rates, timing, and validation.
 8. Align Thuế TNDN and sensitivity calculations with the base model.
