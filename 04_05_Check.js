@@ -5,100 +5,111 @@
 
 function FS04_check() {
   const ss = SpreadsheetApp.getActive();
-  const sh = FS04_getSheetByPrefix_(ss, '04');
-  if (!sh) throw new Error('Không tìm thấy sheet bắt đầu bằng "04".');
+  const sh = ss.getSheetByName('04. Dòng tiền & Lợi nhuận');
+  if (!sh) throw new Error('Không tìm thấy sheet "04. Dòng tiền & Lợi nhuận".');
 
   const lastRow = sh.getLastRow();
   if (lastRow < 3) throw new Error('Sheet 04 chưa có dữ liệu.');
+  if (sh.getLastColumn() < 39) throw new Error('Sheet 04 thiếu cấu trúc 39 cột A:AM.');
 
   const startRow = 3;
   const numRows = lastRow - 2;
-  const data = sh.getRange(startRow, 1, numRows, 32).getValues();
+  const data = sh.getRange(startRow, 1, numRows, 39).getValues();
 
   const issues = [];
   const tol = 10;
+  let prevDebt = 0;
 
   data.forEach((r, i) => {
     const rowNo = startRow + i;
-    const thang = r[0];
+    const thang = FS04_checkNum_(r[0]);
+    if (!thang) return;
 
-    const dtTruocVAT = n_(r[4]);     // E
-    const vatDauRa = n_(r[5]);       // F
-    const tienKH = n_(r[6]);         // G
+    const dtTruocVAT = FS04_checkNum_(r[4]);       // E
+    const vatDauRa = FS04_checkNum_(r[5]);         // F
+    const tienKH = FS04_checkNum_(r[6]);           // G
+    const chiTruocVAT = FS04_checkNum_(r[7]);      // H
+    const chiSauVAT = FS04_checkNum_(r[8]);        // I
+    const vatDauVao = FS04_checkNum_(r[9]);        // J
+    const vatPhaiNop = FS04_checkNum_(r[10]);      // K
+    const thueTNDN = FS04_checkNum_(r[11]);        // L
+    const giaVon = FS04_checkNum_(r[12]);          // M
+    const lnChiuThue = FS04_checkNum_(r[13]);      // N
+    const lnSauThue = FS04_checkNum_(r[14]);       // O
+    const dongTienTruocTT = FS04_checkNum_(r[15]); // P
+    const nhuCauVon = FS04_checkNum_(r[16]);       // Q
+    const phanPhoiCSH = FS04_checkNum_(r[17]);      // R
+    const cshGopMoi = FS04_checkNum_(r[18]);        // S
+    const cshNopLai = FS04_checkNum_(r[19]);        // T
+    const tongDongCSH = FS04_checkNum_(r[20]);      // U
+    const giaiNganVay = FS04_checkNum_(r[21]);      // V
+    const laiVay = FS04_checkNum_(r[22]);           // W
+    const traGoc = FS04_checkNum_(r[23]);           // X
+    const duNoCuoiKy = FS04_checkNum_(r[24]);       // Y
+    const tienCuoiKy = FS04_checkNum_(r[25]);       // Z
+    const fcff = FS04_checkNum_(r[35]);             // AJ
+    const fcfe = FS04_checkNum_(r[36]);             // AK
 
-    const chiTruocVAT = n_(r[7]);    // H
-    const chiSauVAT = n_(r[8]);      // I
-    const vatDauVao = n_(r[9]);      // J
-
-    const vatPhaiNop = n_(r[10]);    // K
-    const thueTNDN = n_(r[11]);      // L
-
-    const giaVon = n_(r[12]);        // M
-    const lnChiuThue = n_(r[13]);    // N
-    const lnSauThue = n_(r[14]);     // O
-
-    const dongTienTruocTT = n_(r[15]); // P
-    const nhuCauVon = n_(r[16]);       // Q
-    const dongTienSauTT = n_(r[17]);   // R
-
-    const vonCSH = n_(r[18]);        // S
-    const giaiNgan = n_(r[19]);      // T
-    const tienCuoiKy = n_(r[24]);    // Y
-
-    // 1. Tiền KH = Doanh thu + VAT đầu ra
     if (Math.abs(tienKH - dtTruocVAT - vatDauRa) > tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Dòng tiền KH ≠ Doanh thu + VAT đầu ra.`);
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Dòng tiền huy động từ KH ≠ Doanh thu trước VAT + VAT đầu ra.`);
     }
 
-    // 2. Chi sau VAT = Chi trước VAT + VAT đầu vào
     if (Math.abs(chiSauVAT - chiTruocVAT - vatDauVao) > tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng chi sau VAT ≠ Chi trước VAT + VAT đầu vào.`);
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng chi sau VAT ≠ Tổng chi trước VAT + VAT đầu vào.`);
     }
 
-    // 3. Lợi nhuận sau thuế = Lợi nhuận chịu thuế - Thuế TNDN
     if (Math.abs(lnSauThue - (lnChiuThue - thueTNDN)) > tol) {
       issues.push(`Dòng ${rowNo} / tháng ${thang}: Lợi nhuận sau thuế chưa khớp.`);
     }
 
-    // 4. Dòng tiền trước tài trợ = Tiền KH - Chi sau VAT - VAT phải nộp - Thuế TNDN
     const cfBefore = tienKH - chiSauVAT - vatPhaiNop - thueTNDN;
     if (Math.abs(dongTienTruocTT - cfBefore) > tol) {
       issues.push(`Dòng ${rowNo} / tháng ${thang}: Dòng tiền trước tài trợ chưa khớp.`);
     }
 
-    // 5. Nhu cầu vốn không âm
-    if (nhuCauVon < -tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Nhu cầu vốn âm.`);
+    if (Math.abs(fcff - dongTienTruocTT) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFF không khớp dòng tiền trước tài trợ.`);
     }
 
-    // 6. Tiền cuối kỳ không âm
-    if (tienCuoiKy < -tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tiền cuối kỳ âm.`);
+    if (Math.abs(fcfe - (phanPhoiCSH - cshGopMoi - cshNopLai)) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: FCFE không khớp phân phối cho CSH trừ các dòng CSH góp vào.`);
     }
 
-    // 7. Giá vốn không âm
-    if (giaVon < -tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Giá vốn âm.`);
+    if (Math.abs(tongDongCSH - cshGopMoi - cshNopLai) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng dòng CSH vào dự án chưa khớp.`);
     }
 
-    // 8. Vốn CSH và giải ngân không âm
-    if (vonCSH < -tol || giaiNgan < -tol) {
-      issues.push(`Dòng ${rowNo} / tháng ${thang}: Vốn góp hoặc giải ngân âm.`);
+    if (Math.abs(nhuCauVon - cshGopMoi - giaiNganVay) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Nhu cầu vốn ≠ CSH góp mới + Giải ngân vay.`);
     }
+
+    const debtCalc = Math.max(0, prevDebt + giaiNganVay - traGoc);
+    if (Math.abs(duNoCuoiKy - debtCalc) > tol) {
+      issues.push(`Dòng ${rowNo} / tháng ${thang}: Dư nợ cuối kỳ chưa khớp dư nợ đầu kỳ + giải ngân - trả gốc.`);
+    }
+
+    if (vatPhaiNop < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: VAT phải nộp âm; cần kiểm tra giả định hoàn VAT.`);
+    if (thueTNDN < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Thuế TNDN âm.`);
+    if (giaVon < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Tổng giá vốn tính thuế âm.`);
+    if (nhuCauVon < -tol || cshGopMoi < -tol || giaiNganVay < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Nhu cầu vốn, vốn CSH hoặc giải ngân vay âm.`);
+    if (laiVay < -tol || traGoc < -tol || duNoCuoiKy < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Lãi vay, trả gốc hoặc dư nợ âm.`);
+    if (tienCuoiKy < -tol) issues.push(`Dòng ${rowNo} / tháng ${thang}: Tiền cuối kỳ âm.`);
+
+    prevDebt = duNoCuoiKy;
   });
 
   if (issues.length === 0) {
-    SpreadsheetApp.getUi().alert('✅ Check Sheet 04: Không phát hiện lỗi.');
+    SpreadsheetApp.getUi().alert('Check Sheet 04: Không phát hiện lỗi logic.');
   } else {
     SpreadsheetApp.getUi().alert(
-      '⚠ Check Sheet 04 phát hiện lỗi:\n\n' +
-      issues.slice(0, 20).join('\n') +
-      (issues.length > 20 ? `\n\n... còn ${issues.length - 20} lỗi khác.` : '')
+      'Check Sheet 04 phát hiện lỗi:\n\n' +
+      issues.slice(0, 30).join('\n') +
+      (issues.length > 30 ? `\n\n... còn ${issues.length - 30} lỗi khác.` : '')
     );
   }
 }
 
-function n_(v) {
+function FS04_checkNum_(v) {
   const num = Number(v);
-  return isNaN(num) ? 0 : num;
+  return isFinite(num) ? num : 0;
 }
