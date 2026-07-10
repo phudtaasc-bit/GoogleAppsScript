@@ -91,7 +91,7 @@ function FS_chayMoHinh_Buoc2() {
 /**
  * Lặp cố định giữa:
  * - Sheet 04: engine xác định tài trợ, lãi vay vốn hóa, trả gốc và tiền giữ lại;
- * - Sheet 03: nhận lại các chỉ tiêu tài trợ để phân bổ chi phí lãi vay;
+ * - Sheet 03: nhận lại toàn bộ trạng thái tài trợ để phân bổ chi phí lãi vay;
  * - Sheet 02: phân bổ lãi vay vào giá vốn và tính Thuế TNDN;
  * - Sheet 04: tính lại cash waterfall.
  *
@@ -111,7 +111,7 @@ function FS_hoiTuLaiVay_() {
   let tolerance = FS_FINANCE_ITERATION.absoluteTolerance;
 
   for (let iteration = 1; iteration <= FS_FINANCE_ITERATION.maxIterations; iteration++) {
-    FS03_capNhatNguonVonTuSheet04();
+    FS03_capNhatNguonVonTuSheet04_V2();
     FS_lapSheet02();
     FS_lapSheet04();
     SpreadsheetApp.flush();
@@ -126,7 +126,7 @@ function FS_hoiTuLaiVay_() {
 
     if (comparison.maxDelta <= tolerance) {
       // Đồng bộ Sheet 03 lần cuối với trạng thái Sheet 04 đã hội tụ.
-      FS03_capNhatNguonVonTuSheet04();
+      FS03_capNhatNguonVonTuSheet04_V2();
       SpreadsheetApp.flush();
       return Object.assign({
         converged: true,
@@ -227,6 +227,7 @@ function FS_V21_KiemTraNhanhSauKhiDan() {
     'Đã nạp runner FS V2.1 có kiểm tra hội tụ tài trợ.',
     'Luồng chuẩn sử dụng FS_lapSheet03_Patched.',
     'Cơ cấu vốn áp dụng theo từng lần thiếu vốn (Cách A).',
+    'Sheet 04 là nguồn tính toán duy nhất; Sheet 03 nhận lại toàn bộ khối tài trợ U:AE.',
     'Vòng lặp dừng khi giải ngân, lãi vay, trả gốc, dư nợ và tiền cuối kỳ cùng ổn định.',
     'Lãi vay được vốn hóa vào dư nợ.',
     'Thuế TNDN được kiểm tra riêng theo từng sản phẩm trước khi lập sheet tổng hợp.',
