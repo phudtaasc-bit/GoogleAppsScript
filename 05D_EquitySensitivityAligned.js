@@ -11,6 +11,8 @@ function FS05D_DoNhay_CSH_LaiSuat_VonDauTu() {
   const tech = ss.getSheetByName('01. Kỹ thuật');
   let rateCell, productRange, costRange;
   let rateFormula = '', rateValue = 0, productSnapshot = [], costSnapshot = [];
+  let interestResults = [], investmentResults = [];
+  let primaryError = null;
 
   try {
     if (!tech) throw new Error('Không tìm thấy sheet "01. Kỹ thuật".');
@@ -39,8 +41,6 @@ function FS05D_DoNhay_CSH_LaiSuat_VonDauTu() {
     costSnapshot = FS05D_snapshot_(costRange);
 
     const originalRate = FS05C_rate_(rateValue);
-    const interestResults = [];
-    const investmentResults = [];
 
     ss.toast('Đang tính độ nhạy vốn CSH theo lãi suất...', 'FS - Độ nhạy', 5);
     levels.forEach(change => {
@@ -59,31 +59,32 @@ function FS05D_DoNhay_CSH_LaiSuat_VonDauTu() {
       const m = FS05C_readEquityMetrics_();
       investmentResults.push([change, 1 + change, m.npv, m.irr]);
     });
-
-    FS05D_restoreCell_(rateCell, rateFormula, rateValue);
-    FS05D_restore_(productRange, productSnapshot);
-    FS05D_restore_(costRange, costSnapshot);
-    FS05C_runScenarioModel_();
-
-    FS05D_writeResults_(sh, interestResults, investmentResults);
-    ss.toast('Đã cập nhật độ nhạy vốn CSH theo cùng biên độ độ nhạy dự án.', 'FS - Độ nhạy', 8);
+  } catch (err) {
+    primaryError = err;
   } finally {
     try {
       if (rateCell) FS05D_restoreCell_(rateCell, rateFormula, rateValue);
       if (productRange && productSnapshot.length) FS05D_restore_(productRange, productSnapshot);
       if (costRange && costSnapshot.length) FS05D_restore_(costRange, costSnapshot);
       SpreadsheetApp.flush();
+
+      // Luôn trả cả đầu vào và kết quả mô hình về trạng thái cơ sở.
+      if (rateCell && productRange && costRange) FS05C_runScenarioModel_();
+    } catch (restoreErr) {
+      if (!primaryError) primaryError = restoreErr;
+      else primaryError.message += '\nLỗi khi phục hồi mô hình cơ sở: ' + restoreErr.message;
     } finally {
       lock.releaseLock();
     }
   }
+
+  if (primaryError) throw primaryError;
+
+  const sh = ss.getSheetByName('05. Độ nhạy');
+  FS05D_writeResults_(sh, interestResults, investmentResults);
+  ss.toast('Đã cập nhật độ nhạy vốn CSH theo cùng biên độ độ nhạy dự án.', 'FS - Độ nhạy', 8);
 }
 
-/**
- * Tìm một dãy tỷ lệ liên tục trên cùng hàng hoặc cùng cột.
- * Dãy hợp lệ phải có mức âm, 0, dương và biến thiên đơn điệu.
- * Cách này tránh nhầm NPV, IRR hoặc các hệ số rời rạc thành biên độ.
- */
 function FS05D_readProjectSensitivityLevels_(sheet) {
   const values = sheet.getDataRange().getValues();
   if (!values.length) return [];
@@ -177,7 +178,6 @@ function FS05D_restoreCell_(cell, formula, value) {
 function FS05D_applyInvestmentFactor_(productRange, costRange, productSnapshot, costSnapshot, factor) {
   const products = productSnapshot.map(r => r.slice());
   products.forEach(r => {
-    // SAN_PHAM cột F: CPXD/m². Không ghi đè ô đang chứa công thức.
     if (typeof r[5] === 'number' && isFinite(r[5])) r[5] *= factor;
   });
 
