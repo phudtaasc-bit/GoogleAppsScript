@@ -23,7 +23,7 @@ function onOpen() {
     .addSeparator()
     .addItem('4.3.1 Bước 1 - Khởi tạo mô hình', 'FS_chayMoHinh_Buoc1')
     .addItem('4.3.2 Bước 2 - Tiếp tục hội tụ tài trợ', 'FS_chayMoHinh_Buoc2')
-    .addItem('4.3.3 Bước 3 - Hoàn tất và lập báo cáo', 'FS_chayMoHinh_Buoc3')
+    .addItem('4.3.3 Bước 3 - Hoàn tất và lập báo cáo', 'FS_chayMoHinh_Buoc3_SafeCIT')
     .addItem('4.3.4 Xóa trạng thái chạy', 'FS_xoaTrangThaiChay')
     .addItem('4.3.5 Chạy tự động theo trạng thái', 'FS_chayToanBoMoHinh_Safe')
 
