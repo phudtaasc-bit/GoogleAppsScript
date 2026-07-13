@@ -107,11 +107,12 @@ function FS_lapSheet00() {
   sh.getRange('A23:E23').merge().setValue('III. ĐÁNH GIÁ HIỆU QUẢ ĐẦU TƯ');
   sh.getRange('A24:E24').setValues([['TT', 'Nội dung', 'Đơn vị', 'Giá trị', 'Ghi chú']]);
 
-  sh.getRange('A25:E42').setValues([
+  sh.getRange('A25:E43').setValues([
     ['1', 'Tổng doanh thu có VAT', 'tỷ đồng', '', ''],
     ['1.1', 'Phần NOXH', 'tỷ đồng', '', ''],
     ['1.2', 'Phần thấp tầng / Liền kề', 'tỷ đồng', '', ''],
-    ['1.3', 'Phần TMDV / Cho thuê', 'tỷ đồng', '', ''],
+    ['1.3', 'Phần Chung cư', 'tỷ đồng', '', ''],
+    ['1.4', 'Phần TMDV / Cho thuê', 'tỷ đồng', '', ''],
     ['2', 'Tổng chi phí có VAT', 'tỷ đồng', '', ''],
     ['2.1', 'Tổng vốn đầu tư dự án', 'tỷ đồng', '', ''],
     ['2.2', 'Chi phí bán hàng', 'tỷ đồng', '', ''],
@@ -131,30 +132,31 @@ function FS_lapSheet00() {
   sh.getRange('D25').setFormula(`=SUM(${s04}!G3:G${endRow04})/1000000000`);
   sh.getRange('D26').setFormula(`=SUMIF(${s02}!E:E;"*NOXH*";${s02}!T:T)/1000000000`);
   sh.getRange('D27').setFormula(`=SUMIF(${s02}!E:E;"*Liền kề*";${s02}!T:T)/1000000000`);
-  sh.getRange('D28').setFormula(`=(SUMIF(${s02}!E:E;"*TMDV*";${s02}!T:T)+SUMIF(${s02}!F:F;"*Cho thuê*";${s02}!T:T))/1000000000`);
+  sh.getRange('D28').setFormula(`=SUMIF(${s02}!E:E;"*Chung cư*";${s02}!T:T)/1000000000`);
+  sh.getRange('D29').setFormula(`=SUMIF(${s02}!F:F;"*Cho thuê*";${s02}!T:T)/1000000000`);
 
-  sh.getRange('D29').setFormula('=D30+D31');
-  sh.getRange('D30').setFormula('=C12');
-  sh.getRange('D31').setFormula(`=(SUM(${s03}!L3:L)+${vatAlloc('L')})/1000000000`);
-  sh.getRange('D32').setFormula(`=SUM(${s04}!O3:O${endRow04})/1000000000`);
+  sh.getRange('D30').setFormula('=D31+D32');
+  sh.getRange('D31').setFormula('=C12');
+  sh.getRange('D32').setFormula(`=(SUM(${s03}!L3:L)+${vatAlloc('L')})/1000000000`);
+  sh.getRange('D33').setFormula(`=SUM(${s04}!O3:O${endRow04})/1000000000`);
 
-  sh.getRange('D33').setFormula(`=IFERROR(NPV(${monthlyWacc};${s04}!AJ3:AJ${endRow04})/1000000000;0)`);
-  sh.getRange('D34').setFormula(`=IFERROR((1+IRR(${s04}!AJ3:AJ${endRow04}))^12-1;0)`);
-  sh.getRange('D35').setValue('');
+  sh.getRange('D34').setFormula(`=IFERROR(NPV(${monthlyWacc};${s04}!AJ3:AJ${endRow04})/1000000000;0)`);
+  sh.getRange('D35').setFormula(`=IFERROR((1+IRR(${s04}!AJ3:AJ${endRow04}))^12-1;0)`);
+  sh.getRange('D36').setValue('');
 
-  sh.getRange('D36').setFormula(`=IFERROR(NPV(${monthlyCostOfEquity};${s04}!AK3:AK${endRow04})/1000000000;0)`);
-  sh.getRange('D37').setFormula(`=IFERROR((1+IRR(${s04}!AK3:AK${endRow04}))^12-1;0)`);
-  sh.getRange('D38').setValue('');
+  sh.getRange('D37').setFormula(`=IFERROR(NPV(${monthlyCostOfEquity};${s04}!AK3:AK${endRow04})/1000000000;0)`);
+  sh.getRange('D38').setFormula(`=IFERROR((1+IRR(${s04}!AK3:AK${endRow04}))^12-1;0)`);
+  sh.getRange('D39').setValue('');
 
-  sh.getRange('D39').setFormula(`=MAX(${s04}!Y3:Y${endRow04})/1000000000`);
-  sh.getRange('D40').setFormula(`=SUM(${s04}!W3:W${endRow04})/1000000000`);
-  sh.getRange('D41').setFormula(`=SUM(${s04}!L3:L${endRow04})/1000000000`);
-  sh.getRange('D42').setFormula(`=SUM(${s04}!K3:K${endRow04})/1000000000`);
+  sh.getRange('D40').setFormula(`=MAX(${s04}!Y3:Y${endRow04})/1000000000`);
+  sh.getRange('D41').setFormula(`=SUM(${s04}!W3:W${endRow04})/1000000000`);
+  sh.getRange('D42').setFormula(`=SUM(${s04}!L3:L${endRow04})/1000000000`);
+  sh.getRange('D43').setFormula(`=SUM(${s04}!K3:K${endRow04})/1000000000`);
 
   SpreadsheetApp.flush();
 
-  sh.getRange('D35').setValue(FS00_calcPaybackMonths_(sh04, 38, 3, endRow04));
-  sh.getRange('D38').setValue(FS00_calcPaybackMonths_(sh04, 39, 3, endRow04));
+  sh.getRange('D36').setValue(FS00_calcPaybackMonths_(sh04, 38, 3, endRow04));
+  sh.getRange('D39').setValue(FS00_calcPaybackMonths_(sh04, 39, 3, endRow04));
 
   SpreadsheetApp.flush();
   FS00_formatTongHop_(sh);
@@ -184,7 +186,7 @@ function FS00_formatTongHop_(sh) {
   sh.setFrozenRows(2);
   sh.setFrozenColumns(0);
 
-  sh.getRange('A1:E42')
+  sh.getRange('A1:E43')
     .setFontFamily('Times New Roman')
     .setFontSize(11)
     .setVerticalAlignment('middle')
@@ -202,10 +204,10 @@ function FS00_formatTongHop_(sh) {
     sh.getRange(r).setBackground('#A6A6A6').setFontColor('#FFFFFF').setFontWeight('bold').setHorizontalAlignment('center');
   });
 
-  sh.getRange('A6:A42').setHorizontalAlignment('center');
-  sh.getRange('B6:B42').setHorizontalAlignment('left');
-  sh.getRange('C6:D42').setHorizontalAlignment('center');
-  sh.getRange('E6:E42').setHorizontalAlignment('center');
+  sh.getRange('A6:A43').setHorizontalAlignment('center');
+  sh.getRange('B6:B43').setHorizontalAlignment('left');
+  sh.getRange('C6:D43').setHorizontalAlignment('center');
+  sh.getRange('E6:E43').setHorizontalAlignment('center');
 
   sh.getRange('C6:C13').setNumberFormat('#,##0.0');
   sh.getRange('D6:D13').setNumberFormat('0.0%');
@@ -214,20 +216,20 @@ function FS00_formatTongHop_(sh) {
   sh.getRange('D17:D20').setNumberFormat('0.0%');
   sh.getRange('E17:E21').setNumberFormat('0.0%');
 
-  sh.getRange('D25:D33').setNumberFormat('#,##0.0');
-  sh.getRange('D34').setNumberFormat('0.0%');
-  sh.getRange('D35').setNumberFormat('0.00');
-  sh.getRange('D36').setNumberFormat('#,##0.0');
-  sh.getRange('D37').setNumberFormat('0.0%');
-  sh.getRange('D38').setNumberFormat('0.00');
-  sh.getRange('D39:D42').setNumberFormat('#,##0.0');
+  sh.getRange('D25:D34').setNumberFormat('#,##0.0');
+  sh.getRange('D35').setNumberFormat('0.0%');
+  sh.getRange('D36').setNumberFormat('0.00');
+  sh.getRange('D37').setNumberFormat('#,##0.0');
+  sh.getRange('D38').setNumberFormat('0.0%');
+  sh.getRange('D39').setNumberFormat('0.00');
+  sh.getRange('D40:D43').setNumberFormat('#,##0.0');
 
-  ['A12:E13', 'A20:E21', 'A25:E25', 'A29:E29', 'A32:E42'].forEach(r => {
+  ['A12:E13', 'A20:E21', 'A25:E25', 'A30:E30', 'A33:E43'].forEach(r => {
     sh.getRange(r).setFontWeight('bold');
   });
 
-  sh.getRange('A33:E35').setBackground('#FCE4D6').setFontWeight('bold').setFontColor('#FF0000');
-  sh.getRange('A36:E38').setBackground('#E2F0D9').setFontWeight('bold').setFontColor('#FF0000');
+  sh.getRange('A34:E36').setBackground('#FCE4D6').setFontWeight('bold').setFontColor('#FF0000');
+  sh.getRange('A37:E39').setBackground('#E2F0D9').setFontWeight('bold').setFontColor('#FF0000');
 
   sh.getRange('C12:D13').setFontColor('#FF0000').setFontWeight('bold');
   sh.getRange('E21').setFontColor('#FF0000').setFontWeight('bold');
@@ -238,7 +240,7 @@ function FS00_formatTongHop_(sh) {
   sh.setColumnWidth(4, 110);
   sh.setColumnWidth(5, 170);
 
-  for (let r = 1; r <= 42; r++) sh.setRowHeight(r, 24);
+  for (let r = 1; r <= 43; r++) sh.setRowHeight(r, 24);
   sh.setRowHeight(1, 30);
 }
 
