@@ -11,13 +11,42 @@
  * - Chi phí bảo trì theo năm được phân bổ đều 12 tháng.
  * - Gộp vào cột X "Chi phí vận hành thuê trước VAT" để giữ nguyên layout.
  * - Đồng thời cập nhật AD, AE, AF để Thuế TNDN phản ánh chi phí bảo trì.
+ * - Chi phí vận hành và bảo trì được đưa sang Sheet 03 để phản ánh dòng tiền dự án.
  *************************************************/
 
 const FS02M_BASE_LAP_SHEET02_ = FS_lapSheet02;
+const FS02M_BASE_READ_MONTHLY_ = FS03V21_docTongTheoThangTuSheet02_;
+const FS02M_BASE_LAP_SHEET03_PATCHED_ = FS_lapSheet03_Patched;
 
 FS_lapSheet02 = function() {
   FS02M_BASE_LAP_SHEET02_();
   FS02M_applyMaintenance_();
+};
+
+FS03V21_docTongTheoThangTuSheet02_ = function(sh02, soThang) {
+  const out = FS02M_BASE_READ_MONTHLY_(sh02, soThang);
+  const lastRow = sh02.getLastRow();
+  if (lastRow < 2) return out;
+
+  const data = sh02.getRange(2, 1, lastRow - 1, Math.min(32, sh02.getLastColumn())).getValues();
+  data.forEach(r => {
+    const monthNo = Number(r[0]) || 0;
+    if (!monthNo || !out[monthNo]) return;
+
+    // X - Chi phí vận hành & bảo trì thuê trước VAT.
+    // Gộp vào trường chiBanHang hiện hữu để giữ nguyên layout Sheet 03.
+    out[monthNo].chiBanHang += Number(r[23]) || 0;
+  });
+
+  return out;
+};
+
+FS_lapSheet03_Patched = function() {
+  FS02M_BASE_LAP_SHEET03_PATCHED_();
+  const sh03 = SpreadsheetApp.getActive().getSheetByName('03. Chi phí & Vốn');
+  if (sh03) {
+    sh03.getRange(1, 12).setValue('Chi phí bán hàng, vận hành & bảo trì trước VAT');
+  }
 };
 
 function FS02M_applyMaintenance_() {
