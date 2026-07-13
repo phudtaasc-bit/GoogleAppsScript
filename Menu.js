@@ -2,7 +2,7 @@ function onOpen() {
   SpreadsheetApp.getUi()
     .createMenu('FS - CẬP NHẬT MÔ HÌNH')
 
-    .addItem('0. Lập sheet 00 - Tổng hợp', 'FS_lapSheet00')
+    .addItem('0. Lập sheet 00 - Tổng hợp', 'FS99C_lapSheet00')
     .addItem('1. Tạo lại sheet Kỹ thuật từ Đầu vào', 'FS_taoKyThuatTuDauVao')
 
     .addSeparator()
@@ -16,16 +16,16 @@ function onOpen() {
     .addItem('3.4 Sheet 03 - Kiểm tra logic', 'FS03_checkV2')
 
     .addSeparator()
-    .addItem('4. Lập sheet 04 - Dòng tiền', 'FS_lapSheet04')
+    .addItem('4. Lập sheet 04 - Dòng tiền', 'FS99C_lapSheet04')
     .addItem('4.1 Sheet 04 - Kiểm tra logic', 'FS04_check')
     .addItem('4.2 Sheet 04A - Tổng hợp dòng tiền', 'FS_lapSheet04A')
 
     .addSeparator()
-    .addItem('4.3.1 Bước 1 - Khởi tạo mô hình', 'FS_chayMoHinh_Buoc1')
-    .addItem('4.3.2 Bước 2 - Tiếp tục hội tụ tài trợ', 'FS_chayMoHinh_Buoc2')
-    .addItem('4.3.3 Bước 3 - Hoàn tất và lập báo cáo', 'FS_chayMoHinh_Buoc3_SafeCIT')
+    .addItem('4.3.1 Bước 1 - Khởi tạo mô hình', 'FS99C_chayMoHinh_Buoc1')
+    .addItem('4.3.2 Bước 2 - Tiếp tục hội tụ tài trợ', 'FS99C_chayMoHinh_Buoc2')
+    .addItem('4.3.3 Bước 3 - Hoàn tất và lập báo cáo', 'FS99C_chayMoHinh_Buoc3')
     .addItem('4.3.4 Xóa trạng thái chạy', 'FS_xoaTrangThaiChay')
-    .addItem('4.3.5 Chạy tự động theo trạng thái', 'FS_chayToanBoMoHinh_Safe')
+    .addItem('4.3.5 Chạy tự động theo trạng thái', 'FS99C_chayTuDongTheoTrangThai')
 
     .addSeparator()
     .addItem('5. Độ nhạy nhanh', 'FS05_DoNhay_Fast')
@@ -40,8 +40,7 @@ function onOpen() {
 
 /**
  * Alias tương thích cho các nút hoặc trigger cũ.
- * Luồng chạy chuẩn nằm tại BoSungChiPhiSanPham.js và có cập nhật lãi vay.
  */
 function FS_chayToanBo() {
-  return FS_chayToanBoMoHinh_Safe();
+  return FS99C_chayTuDongTheoTrangThai();
 }
