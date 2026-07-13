@@ -19,7 +19,13 @@ function onOpen() {
     .addItem('4. Lập sheet 04 - Dòng tiền', 'FS_lapSheet04')
     .addItem('4.1 Sheet 04 - Kiểm tra logic', 'FS04_check')
     .addItem('4.2 Sheet 04A - Tổng hợp dòng tiền', 'FS_lapSheet04A')
-    .addItem('4.3. Chạy toàn bộ mô hình - có cập nhật lãi vay', 'FS_chayToanBoMoHinh_Safe')
+
+    .addSeparator()
+    .addItem('4.3.1 Bước 1 - Khởi tạo mô hình', 'FS_chayMoHinh_Buoc1')
+    .addItem('4.3.2 Bước 2 - Tiếp tục hội tụ tài trợ', 'FS_chayMoHinh_Buoc2')
+    .addItem('4.3.3 Bước 3 - Hoàn tất và lập báo cáo', 'FS_chayMoHinh_Buoc3')
+    .addItem('4.3.4 Xóa trạng thái chạy', 'FS_xoaTrangThaiChay')
+    .addItem('4.3.5 Chạy tự động theo trạng thái', 'FS_chayToanBoMoHinh_Safe')
 
     .addSeparator()
     .addItem('5. Độ nhạy nhanh', 'FS05_DoNhay_Fast')
