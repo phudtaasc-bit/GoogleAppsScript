@@ -31,7 +31,7 @@ function FS_chayToanBoMoHinh_CoLaiVay() {
 
   FS94_assertCITConsistency_();
   FS_lapSheet04A();
-  FS_lapSheet00_Patched();
+  FS_lapSheet00();
   FS93_runRegressionSuite_({ showAlert: false, throwOnError: true });
 
   ss.toast(
@@ -82,7 +82,7 @@ function FS_chayMoHinh_Buoc2() {
 
   FS94_assertCITConsistency_();
   FS_lapSheet04A();
-  FS_lapSheet00_Patched();
+  FS_lapSheet00();
   FS93_runRegressionSuite_({ showAlert: false, throwOnError: true });
 
   ss.toast('Đã chạy xong bước 2 và kiểm thử hồi quy đạt.', 'FS V2.1', 10);
@@ -125,7 +125,6 @@ function FS_hoiTuLaiVay_() {
     );
 
     if (comparison.maxDelta <= tolerance) {
-      // Đồng bộ Sheet 03 lần cuối với trạng thái Sheet 04 đã hội tụ.
       FS03_capNhatNguonVonTuSheet04_V2();
       SpreadsheetApp.flush();
       return Object.assign({
@@ -219,9 +218,6 @@ function FS_moTaLoiHoiTu_(result) {
   ].join('\n');
 }
 
-/**
- * Chạy kiểm tra nhanh để phát hiện project còn patch cũ hay không.
- */
 function FS_V21_KiemTraNhanhSauKhiDan() {
   const msg = [
     'Đã nạp runner FS V2.1 có kiểm tra hội tụ tài trợ.',
