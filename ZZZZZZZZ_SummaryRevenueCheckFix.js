@@ -18,7 +18,6 @@ FS_lapSheet00 = function() {
 };
 
 function FSZZZZZZZZ_suaTongHopDoanhThuVaKiemTra() {
-  // Luôn lập lại Sheet 00 gốc trước, sau đó dựng bố cục ổn định một lần.
   FSZZZZZZZZ_BASE_LAP_SHEET00_();
   FSZZZZZZZZ_rebuildStableSummary_();
   SpreadsheetApp.flush();
@@ -63,7 +62,10 @@ function FSZZZZZZZZ_rebuildStableSummary_() {
   const opAfterVat = FSZZZZZZZZ_sumColumn_(sh03, opCol, h03.dataStartRow) * (1 + opVatRate) / 1e9;
   const maintAfterVat = FSZZZZZZZZ_sumColumn_(sh03, maintCol, h03.dataStartRow) * (1 + maintVatRate) / 1e9;
 
-  // Hàm gốc vừa chạy nên các chỉ tiêu gốc đang nằm tại dòng 25:43.
+  // Lưu công thức/giá trị D31 do hàm gốc vừa tạo trước khi ghi đè vùng A30:E34.
+  const originalD31Formula = sh00.getRange('D31').getFormula();
+  const originalD31Value = sh00.getRange('D31').getValue();
+
   // Chuyển nguyên khối từ LNST đến VAT xuống 2 dòng để dành chỗ cho 2.3 và 2.4.
   sh00.getRange('A33:E43').copyTo(
     sh00.getRange('A35:E45'),
@@ -71,7 +73,7 @@ function FSZZZZZZZZ_rebuildStableSummary_() {
     false
   );
 
-  // Dựng cố định nhóm chi phí. Mục 2 đã thể hiện "có VAT" nên không lặp lại trong tên con.
+  // Dựng cố định nhóm chi phí.
   sh00.getRange('A30:E34').setValues([
     ['2', 'Tổng chi phí có VAT', 'tỷ đồng', '', ''],
     ['2.1', 'Tổng vốn đầu tư dự án', 'tỷ đồng', '', ''],
@@ -79,10 +81,15 @@ function FSZZZZZZZZ_rebuildStableSummary_() {
     ['2.3', 'Chi phí vận hành', 'tỷ đồng', opAfterVat, ''],
     ['2.4', 'Chi phí bảo trì', 'tỷ đồng', maintAfterVat, '']
   ]);
-  sh00.getRange('D30').setFormula('=SUM(D31:D34)');
-  // D31 giữ nguyên công thức Tổng vốn đầu tư do hàm gốc tạo tại D31.
 
-  // Khôi phục chắc chắn hai dòng thuế sau khi dịch chuyển.
+  // Khôi phục D31 sau khi setValues đã xóa công thức/giá trị cũ.
+  if (originalD31Formula) {
+    sh00.getRange('D31').setFormula(originalD31Formula);
+  } else {
+    sh00.getRange('D31').setValue(originalD31Value);
+  }
+  sh00.getRange('D30').setFormula('=SUM(D31:D34)');
+
   const citTy = FSZZZZZZZZ_sumColumn_(sh04, citCol, h04.dataStartRow) / 1e9;
   const vatPayTy = FSZZZZZZZZ_sumColumn_(sh04, vatPayCol, h04.dataStartRow) / 1e9;
   sh00.getRange('A44:E45').setValues([
@@ -90,7 +97,6 @@ function FSZZZZZZZZ_rebuildStableSummary_() {
     ['13', 'Tổng VAT phải nộp', 'tỷ đồng', vatPayTy, '']
   ]);
 
-  // Chỉ tiêu 14 lấy trực tiếp từ nguồn chi tiết, không phụ thuộc vị trí dòng.
   const revenueTy = FSZZZZZZZZ_sumColumn_(sh02, cashCol, h02.dataStartRow) / 1e9;
   const totalCostTy = (
     FSZZZZZZZZ_sumColumn_(sh03, totalAfterVatCol, h03.dataStartRow) +
@@ -103,7 +109,6 @@ function FSZZZZZZZZ_rebuildStableSummary_() {
     ['14', 'Chênh lệch đối chiếu phạm vi', 'tỷ đồng', scopeDifferenceTy, '']
   ]);
 
-  // Định dạng thống nhất.
   sh00.getRange('A25:E46')
     .setFontFamily('Times New Roman')
     .setFontSize(11)
@@ -116,19 +121,16 @@ function FSZZZZZZZZ_rebuildStableSummary_() {
   sh00.getRange('D25:D46').setHorizontalAlignment('right');
   sh00.getRange('E25:E46').setHorizontalAlignment('center');
 
-  // Tiền và tháng: 1 chữ số thập phân; IRR: phần trăm thống nhất.
   const moneyRows = [25,26,27,28,29,30,31,32,33,34,35,36,39,42,43,44,45,46];
   moneyRows.forEach(r => sh00.getRange(r, 4).setNumberFormat('#,##0.0;[Red]-#,##0.0'));
   [38,41].forEach(r => sh00.getRange(r, 4).setNumberFormat('0.0'));
   [37,40].forEach(r => sh00.getRange(r, 4).setNumberFormat('0.0%'));
 
-  // Nhóm chi phí con thống nhất nền trắng, chữ đen, không đậm.
   sh00.getRange('A31:E34')
     .setBackground('#ffffff')
     .setFontColor('#000000')
     .setFontWeight('normal');
 
-  // Các dòng tổng/chỉ tiêu chính giữ đậm.
   [25,30,35,42,43,44,45,46].forEach(r => sh00.getRange(r, 1, 1, 4).setFontWeight('bold'));
   sh00.getRange('E32:E34').clearContent();
   sh00.getRange('E44:E46').clearContent();
