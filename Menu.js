@@ -28,6 +28,13 @@ function onOpen() {
     .addItem('4.3.5 Chạy tự động theo trạng thái', 'FS99C_chayTuDongTheoTrangThai')
 
     .addSeparator()
+    .addItem('8.1 Pipeline - Cập nhật chi phí nguồn', 'FS99P_buoc1_CapNhatChiPhiNguon')
+    .addItem('8.2 Pipeline - Lập dòng tiền', 'FS99P_buoc2_LapDongTien')
+    .addItem('8.3 Pipeline - Tổng hợp theo năm', 'FS99P_buoc3_LapTongHopNam')
+    .addItem('8.4 Pipeline - Tổng hợp dự án', 'FS99P_buoc4_LapTongHopDuAn')
+    .addItem('8.5 Pipeline - Kiểm tra nhanh', 'FS99P_buoc5_KiemTraNhanh')
+
+    .addSeparator()
     .addItem('5. Độ nhạy nhanh', 'FS05_DoNhay_Fast')
     .addItem('6. Độ nhạy vốn CSH - NPV/IRR vốn', 'FS05B_DoNhay_CSH')
     .addItem('6.1 Độ nhạy vốn CSH - Lãi suất & Vốn đầu tư', 'FS05D_DoNhay_CSH_LaiSuat_VonDauTu')
