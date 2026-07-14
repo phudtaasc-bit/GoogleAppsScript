@@ -26,11 +26,7 @@ function FS99Q_chayAuditReconciliation() {
     const d = FS99Q_num_(a) - FS99Q_num_(b);
     const limit = tol == null ? tolDong : tol;
     results.push([
-      group,
-      test,
-      FS99Q_num_(a),
-      FS99Q_num_(b),
-      d,
+      group, test, FS99Q_num_(a), FS99Q_num_(b), d,
       Math.abs(d) <= limit ? 'PASS' : 'FAIL',
       note || '',
       Math.abs(d) <= limit ? '' : (fix || 'Kiểm tra nguồn/công thức của chỉ tiêu này.')
@@ -50,11 +46,14 @@ function FS99Q_chayAuditReconciliation() {
   add('DOANH THU', 'Dòng tiền huy động KH Sheet 02 = Sheet 03',
     sum02('Dòng tiền huy động từ KH'), sum03('Dòng tiền huy động từ KH'));
 
-  const costParts = ['Chi XD/TB/khác trước VAT','Chi GPMB trước VAT','Tiền SDĐ/thuê đất trước VAT',
-    'Chi HTKT trước VAT','Chi phí bán hàng trước VAT','Chi phí dự phòng trước VAT',
-    'Chi phí vận hành thuê trước VAT','Chi phí bảo trì trước VAT'];
+  const costParts = [
+    'Chi XD/TB/khác trước VAT', 'Chi GPMB trước VAT', 'Tiền SDĐ/thuê đất trước VAT',
+    'Chi HTKT trước VAT', 'Chi phí bán hàng trước VAT', 'Chi phí dự phòng trước VAT',
+    'Chi phí vận hành thuê trước VAT', 'Chi phí bảo trì trước VAT'
+  ];
   const parts03 = costParts.reduce((s, n) => s + sum03(n), 0);
-  add('CHI PHÍ', 'Sheet 03: Tổng chi trước VAT = tổng 8 cấu phần', sum03('Tổng chi trước VAT'), parts03,
+  add('CHI PHÍ', 'Sheet 03: Tổng chi trước VAT = tổng 8 cấu phần',
+    sum03('Tổng chi trước VAT'), parts03,
     'XD + GPMB + đất + HTKT + bán hàng + dự phòng + vận hành + bảo trì');
   add('CHI PHÍ', 'Sheet 03: Tổng chi sau VAT = Tổng chi trước VAT + VAT đầu vào',
     sum03('Tổng chi sau VAT'), sum03('Tổng chi trước VAT') + sum03('VAT đầu vào'));
@@ -77,7 +76,6 @@ function FS99Q_chayAuditReconciliation() {
     netAfterFinancing - sum04('Tổng dòng CSH vào dự án') + sum04('Lãi vay vốn hóa'));
 
   const srcRevenueTy = sum02('Dòng tiền huy động từ KH') / 1e9;
-  // D30 bao gồm toàn bộ chi phí sau VAT tại Sheet 03 và lãi vay vốn hóa.
   const srcCostTy = (sum03('Tổng chi sau VAT') + sum04('Lãi vay vốn hóa')) / 1e9;
   const srcProfitAfterTaxTy = sum04('Lợi nhuận sau thuế') / 1e9;
   const srcCitTy = sum03('Thuế TNDN') / 1e9;
@@ -85,74 +83,50 @@ function FS99Q_chayAuditReconciliation() {
 
   const d25 = FS99Q_num_(sh00.getRange('D25').getValue());
   const d30 = FS99Q_num_(sh00.getRange('D30').getValue());
-  const d33 = FS99Q_num_(sh00.getRange('D33').getValue());
-  const d42 = FS99Q_num_(sh00.getRange('D42').getValue());
-  const d43 = FS99Q_num_(sh00.getRange('D43').getValue());
+  const d35 = FS99Q_num_(sh00.getRange('D35').getValue());
+  const d44 = FS99Q_num_(sh00.getRange('D44').getValue());
+  const d45 = FS99Q_num_(sh00.getRange('D45').getValue());
 
   add('TỔNG HỢP - NGUỒN', 'D25 Tổng doanh thu có VAT = Sheet 02', d25, srcRevenueTy,
     'Ô D25 so với tổng Dòng tiền huy động từ KH / 1 tỷ.',
-    'Sửa công thức ô D25 hoặc hàm lập Sheet 00 để link đúng cột Dòng tiền huy động từ KH của Sheet 02.', tolTy);
+    'Sửa công thức ô D25 hoặc hàm lập Sheet 00.', tolTy);
   add('TỔNG HỢP - NGUỒN', 'D30 Tổng chi phí có VAT = chi phí sau VAT + lãi vay', d30, srcCostTy,
     'Nguồn đúng: Tổng chi sau VAT Sheet 03 + Lãi vay vốn hóa Sheet 04, chia 1 tỷ.',
-    'Sửa công thức D30/D31/D32/D45/D46 hoặc nguồn lãi vay nếu tổng chi phí không khớp.', tolTy);
-  add('TỔNG HỢP - NGUỒN', 'D33 Lợi nhuận sau thuế = Sheet 04', d33, srcProfitAfterTaxTy,
-    'Ô D33 so với tổng Lợi nhuận sau thuế / 1 tỷ.',
-    'Sửa công thức ô D33 hoặc hàm lập Sheet 00 để lấy Lợi nhuận sau thuế của Sheet 04.', tolTy);
-  add('TỔNG HỢP - NGUỒN', 'D42 Tổng Thuế TNDN = Sheet 03', d42, srcCitTy,
-    'Ô D42 so với tổng Thuế TNDN / 1 tỷ.',
-    'Sửa công thức ô D42 hoặc hàm lập Sheet 00 để lấy Thuế TNDN của Sheet 03.', tolTy);
-  add('TỔNG HỢP - NGUỒN', 'D43 Tổng VAT phải nộp = Sheet 04', d43, srcVatPayTy,
-    'Ô D43 so với tổng VAT phải nộp / 1 tỷ.',
-    'Sửa công thức ô D43 hoặc hàm lập Sheet 00 để lấy VAT phải nộp của Sheet 04.', tolTy);
+    'Sửa D30 hoặc các dòng D31:D34 nếu tổng chi phí không khớp.', tolTy);
+  add('TỔNG HỢP - NGUỒN', 'D35 Lợi nhuận sau thuế = Sheet 04', d35, srcProfitAfterTaxTy,
+    'Ô D35 so với tổng Lợi nhuận sau thuế / 1 tỷ.',
+    'Sửa công thức ô D35 hoặc hàm lập Sheet 00.', tolTy);
+  add('TỔNG HỢP - NGUỒN', 'D44 Tổng Thuế TNDN = Sheet 03', d44, srcCitTy,
+    'Ô D44 so với tổng Thuế TNDN / 1 tỷ.',
+    'Sửa công thức ô D44 hoặc hàm lập Sheet 00.', tolTy);
+  add('TỔNG HỢP - NGUỒN', 'D45 Tổng VAT phải nộp = Sheet 04', d45, srcVatPayTy,
+    'Ô D45 so với tổng VAT phải nộp / 1 tỷ.',
+    'Sửa công thức ô D45 hoặc hàm lập Sheet 00.', tolTy);
 
-  const summaryRight = d30 + d33 + d42 + d43;
+  const summaryRight = d30 + d35 + d44 + d45;
   const summaryDiff = d25 - summaryRight;
   const componentDiffs = [
     ['D25', d25 - srcRevenueTy],
     ['D30', d30 - srcCostTy],
-    ['D33', d33 - srcProfitAfterTaxTy],
-    ['D42', d42 - srcCitTy],
-    ['D43', d43 - srcVatPayTy]
+    ['D35', d35 - srcProfitAfterTaxTy],
+    ['D44', d44 - srcCitTy],
+    ['D45', d45 - srcVatPayTy]
   ];
   const badComponents = componentDiffs.filter(x => Math.abs(x[1]) > tolTy);
   let rootCause;
 
   if (badComponents.length) {
     rootCause = 'Sai liên kết tại: ' + badComponents.map(x => `${x[0]} lệch ${FS99Q_fmtTy_(x[1])}`).join('; ') + '. Sửa đúng các ô này.';
-    results.push([
-      'TỔNG HỢP - KẾT LUẬN',
-      'Đối chiếu chỉ tiêu Sheet 00',
-      d25,
-      summaryRight,
-      summaryDiff,
-      'FAIL',
-      'Có chỉ tiêu Sheet 00 không khớp nguồn chi tiết.',
-      rootCause
-    ]);
+    results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu chỉ tiêu Sheet 00', d25, summaryRight, summaryDiff,
+      'FAIL', 'Có chỉ tiêu Sheet 00 không khớp nguồn chi tiết.', rootCause]);
   } else if (Math.abs(summaryDiff) > tolTy) {
-    rootCause = 'D25, D30, D33, D42, D43 đều khớp nguồn. Chênh lệch phát sinh vì doanh thu có VAT, tổng chi phí có VAT, lợi nhuận kế toán, Thuế TNDN và VAT phải nộp không cùng phạm vi kinh tế. Không ép phương trình bằng 0.';
-    results.push([
-      'TỔNG HỢP - KẾT LUẬN',
-      'Đối chiếu phạm vi D25 - (D30 + D33 + D42 + D43)',
-      d25,
-      summaryRight,
-      summaryDiff,
-      'INFO',
-      'Chênh lệch được giữ để tham chiếu, không phải lỗi số liệu.',
-      rootCause
-    ]);
+    rootCause = 'D25, D30, D35, D44, D45 đều khớp nguồn. Chênh lệch phát sinh vì các chỉ tiêu không cùng phạm vi kinh tế. Không ép phương trình bằng 0.';
+    results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu phạm vi D25 - (D30 + D35 + D44 + D45)',
+      d25, summaryRight, summaryDiff, 'INFO', 'Chênh lệch chỉ để tham chiếu.', rootCause]);
   } else {
     rootCause = 'Các chỉ tiêu khớp nguồn và không có chênh lệch đối chiếu.';
-    results.push([
-      'TỔNG HỢP - KẾT LUẬN',
-      'Đối chiếu phạm vi D25 - (D30 + D33 + D42 + D43)',
-      d25,
-      summaryRight,
-      summaryDiff,
-      'PASS',
-      'Đơn vị tỷ đồng.',
-      rootCause
-    ]);
+    results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu phạm vi D25 - (D30 + D35 + D44 + D45)',
+      d25, summaryRight, summaryDiff, 'PASS', 'Đơn vị tỷ đồng.', rootCause]);
   }
 
   const startRow = 50;
