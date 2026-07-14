@@ -1,12 +1,13 @@
 /*************************************************
  * ZZZZZZZZ_SummaryRevenueCheckFix.js
- * Giữ nguyên mục I, II của hàm gốc; dựng riêng mục III theo dữ liệu thực tế.
+ * Giữ nguyên mục I, II của hàm gốc; hiệu chỉnh VAT mục I và dựng riêng mục III.
  *
  * Nguyên tắc:
+ * - VAT chi phí đầu tư tính trực tiếp theo từng cấu phần, không phân bổ tổng VAT đầu vào theo tỷ trọng.
  * - Doanh thu chỉ hiển thị sản phẩm có phát sinh dòng tiền khách hàng.
  * - Chi phí bán hàng, vận hành, bảo trì chỉ hiển thị khi có giá trị.
  * - Mục 2 đã ghi "Tổng chi phí có VAT", các mục con không lặp lại VAT.
- * - Không dùng địa chỉ dòng cố định cho nội dung động.
+ * - Không dùng địa chỉ dòng cố định cho nội dung động tại mục III.
  *************************************************/
 
 const FSZZZZZZZZ_BASE_LAP_SHEET00_ = FS_lapSheet00;
@@ -20,7 +21,7 @@ function FSZZZZZZZZ_suaTongHopDoanhThuVaKiemTra() {
   FSZZZZZZZZ_BASE_LAP_SHEET00_();
   FSZZZZZZZZ_buildFlexibleSectionIII_();
   SpreadsheetApp.flush();
-  SpreadsheetApp.getUi().alert('Đã dựng lại mục III theo sản phẩm và chi phí thực tế của dự án.');
+  SpreadsheetApp.getUi().alert('Đã hiệu chỉnh VAT theo từng cấu phần và dựng lại mục III theo dữ liệu thực tế.');
 }
 
 function FSZZZZZZZZ_buildFlexibleSectionIII_() {
@@ -40,7 +41,13 @@ function FSZZZZZZZZ_buildFlexibleSectionIII_() {
 
   const productCol = FSZZZZZZZZ_requireCol_(h02.headers, ['Loại sản phẩm']);
   const customerCashCol = FSZZZZZZZZ_requireCol_(h02.headers, ['Dòng tiền huy động từ KH', 'Dòng tiền huy động từ khách hàng']);
+
+  const cpxdCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Chi XD/TB/khác trước VAT', 'Chi phí XD/TB/khác trước VAT']);
+  const gpmbCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Chi GPMB trước VAT', 'Chi phí GPMB trước VAT']);
+  const landCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Tiền SDĐ/thuê đất trước VAT']);
+  const htktCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Chi HTKT trước VAT', 'Chi phí HTKT trước VAT']);
   const sellingCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Chi phí bán hàng trước VAT']);
+  const reserveCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Chi phí dự phòng trước VAT']);
   const opCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Chi phí vận hành thuê trước VAT', 'Chi phí vận hành trước VAT']);
   const maintCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Chi phí bảo trì trước VAT']);
   const totalAfterVatCol = FSZZZZZZZZ_requireCol_(h03.headers, ['Tổng chi sau VAT']);
@@ -50,36 +57,72 @@ function FSZZZZZZZZ_buildFlexibleSectionIII_() {
   const vatPayCol = FSZZZZZZZZ_requireCol_(h04.headers, ['VAT phải nộp']);
   const interestCol = FSZZZZZZZZ_requireCol_(h04.headers, ['Lãi vay vốn hóa']);
 
-  const tol = 0.5; // đồng, chỉ loại các sai số làm tròn thực sự bằng 0.
-  const sellingVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech, ['Chi phí bán hàng'], 0);
-  const opVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech, ['Chi phí vận hành', 'Chi phí vận hành thuê'], sellingVatRate);
-  const maintVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech, ['Chi phí bảo trì', 'Chi phí bảo hành, bảo trì'], opVatRate);
+  const tol = 0.5;
+
+  const cpxdVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech,
+    ['Chi phí XD/TB/khác', 'Chi phí XD/TB', 'Chi phí xây dựng & thiết bị'], 0);
+  const htktVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech,
+    ['Chi phí HTKT'], cpxdVatRate);
+  const reserveVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech,
+    ['Chi phí dự phòng'], cpxdVatRate);
+  const sellingVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech,
+    ['Chi phí bán hàng'], 0);
+  const opVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech,
+    ['Chi phí vận hành', 'Chi phí vận hành thuê'], sellingVatRate);
+  const maintVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech,
+    ['Chi phí bảo trì', 'Chi phí bảo hành, bảo trì'], opVatRate);
+
+  const sum03 = col => FSZZZZZZZZ_sumColumn_(sh03, col, h03.dataStartRow);
+  const sum04 = col => FSZZZZZZZZ_sumColumn_(sh04, col, h04.dataStartRow);
+
+  // MỤC I: tính VAT theo đúng từng cấu phần, tuyệt đối không phân bổ tổng VAT đầu vào theo tỷ trọng.
+  const cpxdAfterVatTy = sum03(cpxdCol) * (1 + cpxdVatRate) / 1e9;
+  const gpmbTy = sum03(gpmbCol) / 1e9;
+  const landTy = sum03(landCol) / 1e9;
+  const htktAfterVatTy = sum03(htktCol) * (1 + htktVatRate) / 1e9;
+  const reserveAfterVatTy = sum03(reserveCol) * (1 + reserveVatRate) / 1e9;
+  const interestTy = sum04(interestCol) / 1e9;
+  const investmentTotalTy = cpxdAfterVatTy + gpmbTy + landTy + htktAfterVatTy + reserveAfterVatTy + interestTy;
+
+  sh00.getRange('C6:C11').setValues([
+    [cpxdAfterVatTy],
+    [gpmbTy],
+    [landTy],
+    [htktAfterVatTy],
+    [reserveAfterVatTy],
+    [interestTy]
+  ]);
+  sh00.getRange('C12').setFormula('=SUM(C6:C11)');
+  sh00.getRange('C13').setFormula('=C12-C8');
+  for (let r = 6; r <= 11; r++) sh00.getRange(r, 4).setFormula(`=IFERROR(C${r}/$C$12,0)`);
+  sh00.getRange('D12').setValue(1);
+  sh00.getRange('C6:C13').setNumberFormat('#,##0.0;[Red]-#,##0.0');
+  sh00.getRange('D6:D12').setNumberFormat('0.0%');
 
   const productRevenue = FSZZZZZZZZ_groupByProduct_(
     sh02, h02.dataStartRow, productCol, customerCashCol
   ).filter(x => Math.abs(x.value) > tol);
 
-  const sellingAfterVat = FSZZZZZZZZ_sumColumn_(sh03, sellingCol, h03.dataStartRow) * (1 + sellingVatRate) / 1e9;
-  const opAfterVat = FSZZZZZZZZ_sumColumn_(sh03, opCol, h03.dataStartRow) * (1 + opVatRate) / 1e9;
-  const maintAfterVat = FSZZZZZZZZ_sumColumn_(sh03, maintCol, h03.dataStartRow) * (1 + maintVatRate) / 1e9;
+  const sellingAfterVat = sum03(sellingCol) * (1 + sellingVatRate) / 1e9;
+  const opAfterVat = sum03(opCol) * (1 + opVatRate) / 1e9;
+  const maintAfterVat = sum03(maintCol) * (1 + maintVatRate) / 1e9;
 
-  // Giữ nguyên công thức/giá trị Tổng vốn đầu tư do mục I của hàm gốc tạo ra.
+  // Sau khi mục I được hiệu chỉnh, công thức gốc tại D31 (nếu có) đã tham chiếu đúng C12.
   const investmentFormula = sh00.getRange('D31').getFormula();
-  const investmentValue = Number(sh00.getRange('D31').getValue()) || 0;
+  const investmentValue = Number(sh00.getRange('D31').getValue()) || investmentTotalTy;
 
-  // Giữ nguyên các KPI do hàm gốc tính, chỉ thay đổi vị trí trình bày.
   const baseKpis = [
-    FSZZZZZZZZ_captureBaseRow_(sh00, 33), // LNST
-    FSZZZZZZZZ_captureBaseRow_(sh00, 34), // NPV dự án
-    FSZZZZZZZZ_captureBaseRow_(sh00, 35), // IRR dự án
-    FSZZZZZZZZ_captureBaseRow_(sh00, 36), // Hoàn vốn dự án
-    FSZZZZZZZZ_captureBaseRow_(sh00, 37), // NPV CSH
-    FSZZZZZZZZ_captureBaseRow_(sh00, 38), // IRR CSH
-    FSZZZZZZZZ_captureBaseRow_(sh00, 39), // Hoàn vốn CSH
-    FSZZZZZZZZ_captureBaseRow_(sh00, 40), // Đỉnh dư nợ
-    FSZZZZZZZZ_captureBaseRow_(sh00, 41), // Lãi vay
-    FSZZZZZZZZ_captureBaseRow_(sh00, 42), // TNDN
-    FSZZZZZZZZ_captureBaseRow_(sh00, 43)  // VAT phải nộp
+    FSZZZZZZZZ_captureBaseRow_(sh00, 33),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 34),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 35),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 36),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 37),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 38),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 39),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 40),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 41),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 42),
+    FSZZZZZZZZ_captureBaseRow_(sh00, 43)
   ];
 
   const totalRevenueTy = productRevenue.reduce((s, x) => s + x.value, 0) / 1e9;
@@ -89,16 +132,12 @@ function FSZZZZZZZZ_buildFlexibleSectionIII_() {
     { label: 'Chi phí bảo trì', value: maintAfterVat }
   ].filter(x => Math.abs(x.value) > 0.0000005);
 
-  const totalCostSourceTy = (
-    FSZZZZZZZZ_sumColumn_(sh03, totalAfterVatCol, h03.dataStartRow) +
-    FSZZZZZZZZ_sumColumn_(sh04, interestCol, h04.dataStartRow)
-  ) / 1e9;
-  const profitAfterTaxTy = FSZZZZZZZZ_sumColumn_(sh04, profitAfterTaxCol, h04.dataStartRow) / 1e9;
-  const citTy = FSZZZZZZZZ_sumColumn_(sh04, citCol, h04.dataStartRow) / 1e9;
-  const vatPayTy = FSZZZZZZZZ_sumColumn_(sh04, vatPayCol, h04.dataStartRow) / 1e9;
+  const totalCostSourceTy = investmentTotalTy + sellingAfterVat + opAfterVat + maintAfterVat;
+  const profitAfterTaxTy = sum04(profitAfterTaxCol) / 1e9;
+  const citTy = sum04(citCol) / 1e9;
+  const vatPayTy = sum04(vatPayCol) / 1e9;
   const scopeDifferenceTy = totalRevenueTy - totalCostSourceTy - profitAfterTaxTy - citTy - vatPayTy;
 
-  // Chỉ xóa mục III; mục I và II giữ nguyên hoàn toàn.
   const clearRows = Math.max(40, sh00.getMaxRows() - 22);
   sh00.getRange(23, 1, clearRows, 5).clearContent().clearFormat();
 
@@ -126,9 +165,7 @@ function FSZZZZZZZZ_buildFlexibleSectionIII_() {
   row++;
 
   const investmentRow = row;
-  sh00.getRange(row, 1, 1, 5).setValues([['2.1', 'Tổng vốn đầu tư dự án', 'tỷ đồng', '', '']]);
-  if (investmentFormula) sh00.getRange(row, 4).setFormula(investmentFormula);
-  else sh00.getRange(row, 4).setValue(investmentValue);
+  sh00.getRange(row, 1, 1, 5).setValues([['2.1', 'Tổng vốn đầu tư dự án', 'tỷ đồng', investmentTotalTy, '']]);
   row++;
 
   costItems.forEach((item, i) => {
@@ -140,8 +177,7 @@ function FSZZZZZZZZ_buildFlexibleSectionIII_() {
   const lastCostRow = row - 1;
   sh00.getRange(totalCostRow, 4).setFormula(`=SUM(D${investmentRow}:D${lastCostRow})`);
 
-  // Các KPI lõi giữ nguyên logic và công thức của hàm gốc.
-  baseKpis.forEach((item, idx) => {
+  baseKpis.forEach(item => {
     const targetRow = row;
     sh00.getRange(targetRow, 1, 1, 5).setValues([[item.tt, item.label, item.unit, '', item.note]]);
     if (item.formula) sh00.getRange(targetRow, 4).setFormula(item.formula);
