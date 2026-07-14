@@ -7,6 +7,7 @@
  * - VAT từng khoản chi lấy theo cấu hình tại Sheet 01. Kỹ thuật.
  * - Các khoản 2.3 và 2.4 nằm ngay sau khoản 2.2.
  * - Hàm chạy lặp lại không được nhân đôi dòng hoặc làm mất Thuế TNDN/VAT.
+ * - Chỉ tiêu 14 tính trực tiếp từ nguồn, không phụ thuộc vị trí dòng trên Sheet 00.
  *************************************************/
 
 const FSZZZZZZZZ_BASE_LAP_SHEET00_ = FS_lapSheet00;
@@ -28,17 +29,25 @@ function FSZZZZZZZZ_restoreSummaryRevenueAndCheck_() {
   const tech = ss.getSheetByName('01. Kỹ thuật');
   const sh02 = ss.getSheetByName('02. Doanh thu');
   const sh03 = ss.getSheetByName('03. Chi phí & Vốn');
-  if (!sh00 || !tech || !sh02 || !sh03) {
-    throw new Error('Thiếu Sheet 00. Tổng hợp, 01. Kỹ thuật, 02. Doanh thu hoặc 03. Chi phí & Vốn.');
+  const sh04 = ss.getSheetByName('04. Dòng tiền & Lợi nhuận');
+  if (!sh00 || !tech || !sh02 || !sh03 || !sh04) {
+    throw new Error('Thiếu Sheet 00, 01. Kỹ thuật, 02. Doanh thu, 03. Chi phí & Vốn hoặc 04. Dòng tiền & Lợi nhuận.');
   }
 
   const headers02 = sh02.getRange(1, 1, 1, sh02.getLastColumn()).getDisplayValues()[0];
   const headers03 = sh03.getRange(1, 1, 1, sh03.getLastColumn()).getDisplayValues()[0];
+  const headers04 = sh04.getRange(2, 1, 1, sh04.getLastColumn()).getDisplayValues()[0];
 
   const cashCol = FSZZZZZZZZ_findHeader_(headers02, ['Dòng tiền huy động từ KH','Dòng tiền huy động từ khách hàng']);
   const sellingCol = FSZZZZZZZZ_findHeader_(headers03, ['Chi phí bán hàng trước VAT']);
   const opCol = FSZZZZZZZZ_findHeader_(headers03, ['Chi phí vận hành thuê trước VAT','Chi phí vận hành trước VAT']);
   const maintCol = FSZZZZZZZZ_findHeader_(headers03, ['Chi phí bảo trì trước VAT']);
+  const totalAfterVatCol = FSZZZZZZZZ_findHeader_(headers03, ['Tổng chi sau VAT']);
+  const profitAfterTaxCol = FSZZZZZZZZ_findHeader_(headers04, ['Lợi nhuận sau thuế']);
+  const citCol = FSZZZZZZZZ_findHeader_(headers04, ['Thuế TNDN']);
+  const vatPayCol = FSZZZZZZZZ_findHeader_(headers04, ['VAT phải nộp']);
+  const interestCol = FSZZZZZZZZ_findHeader_(headers04, ['Lãi vay vốn hóa']);
+
   if (cashCol < 1) throw new Error('Không tìm thấy cột Dòng tiền huy động từ KH trên Sheet 02.');
 
   const sellingVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech, ['Chi phí bán hàng'], 0);
@@ -48,8 +57,6 @@ function FSZZZZZZZZ_restoreSummaryRevenueAndCheck_() {
   const cashLetter = FSZZZZZZZZ_colLetter_(cashCol);
   sh00.getRange('D25').setFormula(`=SUM('02. Doanh thu'!${cashLetter}2:${cashLetter})/1000000000`);
 
-  // Chỉ dịch khối chỉ tiêu gốc một lần. Nếu dòng 33 đã là Chi phí vận hành,
-  // hàm đang được gọi lặp lại trong cùng pipeline và không được copy lần hai.
   const alreadyExpanded = FSZZZZZZZZ_norm_(sh00.getRange('B33').getDisplayValue()).indexOf('chi phi van hanh') >= 0;
   if (!alreadyExpanded) {
     sh00.getRange('A33:E43').copyTo(
@@ -63,7 +70,6 @@ function FSZZZZZZZZ_restoreSummaryRevenueAndCheck_() {
   const opAfterVat = FSZZZZZZZZ_sumColumn_(sh03, opCol, 2) * (1 + opVatRate) / 1e9;
   const maintAfterVat = FSZZZZZZZZ_sumColumn_(sh03, maintCol, 2) * (1 + maintVatRate) / 1e9;
 
-  // Dùng định dạng của dòng 2.2 làm chuẩn cho 2.3 và 2.4.
   sh00.getRange('A32:E32').copyTo(
     sh00.getRange('A33:E34'),
     SpreadsheetApp.CopyPasteType.PASTE_FORMAT,
@@ -87,10 +93,8 @@ function FSZZZZZZZZ_restoreSummaryRevenueAndCheck_() {
     .setHorizontalAlignment('right')
     .setNumberFormat('#,##0.0;[Red]-#,##0.0');
 
-  // Tổng chi phí có VAT = vốn đầu tư + ba khoản chi phí hoạt động sau VAT.
   sh00.getRange('D30').setFormula('=SUM(D31:D34)');
 
-  // Khôi phục chắc chắn hai chỉ tiêu thuế sau khi dịch khối.
   sh00.getRange('A44:E45').setValues([
     ['12', 'Tổng Thuế TNDN', 'tỷ đồng', '', ''],
     ['13', 'Tổng VAT phải nộp', 'tỷ đồng', '', '']
@@ -98,12 +102,24 @@ function FSZZZZZZZZ_restoreSummaryRevenueAndCheck_() {
   sh00.getRange('D44').setFormula(`=SUM('04. Dòng tiền & Lợi nhuận'!L3:L)/1000000000`);
   sh00.getRange('D45').setFormula(`=SUM('04. Dòng tiền & Lợi nhuận'!K3:K)/1000000000`);
 
+  // Chỉ tiêu 14 được tính trực tiếp từ nguồn chi tiết để không sai khi dịch chuyển dòng.
+  // Chênh lệch = Doanh thu có VAT - (Tổng chi phí có VAT + LNST + Thuế TNDN + VAT phải nộp).
+  const revenueTy = FSZZZZZZZZ_sumColumn_(sh02, cashCol, 2) / 1e9;
+  const totalCostTy = (
+    FSZZZZZZZZ_sumColumn_(sh03, totalAfterVatCol, 2) +
+    FSZZZZZZZZ_sumColumn_(sh04, interestCol, 3)
+  ) / 1e9;
+  const profitAfterTaxTy = FSZZZZZZZZ_sumColumn_(sh04, profitAfterTaxCol, 3) / 1e9;
+  const citTy = FSZZZZZZZZ_sumColumn_(sh04, citCol, 3) / 1e9;
+  const vatPayTy = FSZZZZZZZZ_sumColumn_(sh04, vatPayCol, 3) / 1e9;
+  const scopeDifferenceTy = revenueTy - totalCostTy - profitAfterTaxTy - citTy - vatPayTy;
+
   const checkRow = 46;
   sh00.getRange(checkRow, 1, 1, 5).clearContent();
   sh00.getRange(checkRow, 1).setValue('14');
   sh00.getRange(checkRow, 2).setValue('Chênh lệch đối chiếu phạm vi');
   sh00.getRange(checkRow, 3).setValue('tỷ đồng');
-  sh00.getRange(checkRow, 4).setFormula('=D25-(D30+D35+D44+D45)');
+  sh00.getRange(checkRow, 4).setValue(scopeDifferenceTy);
   sh00.getRange(checkRow, 5).clearContent();
 
   sh00.getRange('A35:E46')
