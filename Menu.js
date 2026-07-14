@@ -32,7 +32,7 @@ function onOpen() {
     .addItem('8.2 Pipeline - Lập dòng tiền', 'FS99P_buoc2_LapDongTien')
     .addItem('8.3 Pipeline - Tổng hợp theo năm', 'FS99P_buoc3_LapTongHopNam')
     .addItem('8.4 Pipeline - Tổng hợp dự án', 'FS99P_buoc4_LapTongHopDuAn')
-    .addItem('8.5 Pipeline - Kiểm tra nhanh', 'FS99P_buoc5_KiemTraNhanh')
+    .addItem('8.5 Pipeline - Audit phân rã sai lệch', 'FS99Q_chayAuditReconciliation')
 
     .addSeparator()
     .addItem('5. Độ nhạy nhanh', 'FS05_DoNhay_Fast')
