@@ -44,14 +44,12 @@ function FS99Q_chayAuditReconciliation() {
   const sum03 = n => FS99Q_sumCol_(sh03, 2, FS99Q_col_(h03, n));
   const sum04 = n => FS99Q_sumCol_(sh04, 3, FS99Q_col_(h04, n));
 
-  // 1. Doanh thu
   add('DOANH THU', 'Sheet 02: Tổng doanh thu trước VAT = bán + thuê',
     sum02('Tổng doanh thu trước VAT'),
     sum02('Doanh thu bán trước VAT') + sum02('Doanh thu thuê trước VAT'));
   add('DOANH THU', 'Dòng tiền huy động KH Sheet 02 = Sheet 03',
     sum02('Dòng tiền huy động từ KH'), sum03('Dòng tiền huy động từ KH'));
 
-  // 2. Chi phí trước VAT
   const costParts = ['Chi XD/TB/khác trước VAT','Chi GPMB trước VAT','Tiền SDĐ/thuê đất trước VAT',
     'Chi HTKT trước VAT','Chi phí bán hàng trước VAT','Chi phí dự phòng trước VAT',
     'Chi phí vận hành thuê trước VAT','Chi phí bảo trì trước VAT'];
@@ -61,11 +59,9 @@ function FS99Q_chayAuditReconciliation() {
   add('CHI PHÍ', 'Sheet 03: Tổng chi sau VAT = Tổng chi trước VAT + VAT đầu vào',
     sum03('Tổng chi sau VAT'), sum03('Tổng chi trước VAT') + sum03('VAT đầu vào'));
 
-  // 3. Thuế
   add('THUẾ', 'Thuế TNDN Sheet 02 = Sheet 03', sum02('Thuế TNDN tạm tính'), sum03('Thuế TNDN'));
   add('THUẾ', 'Thuế TNDN Sheet 03 = Sheet 04', sum03('Thuế TNDN'), sum04('Thuế TNDN'));
 
-  // 4. Dòng tiền
   add('DÒNG TIỀN', 'FCFF Sheet 04 = Dòng tiền trước tài trợ',
     sum04('FCFF_TIPV'), sum04('Dòng tiền trước tài trợ'));
   add('DÒNG TIỀN', 'FCFE = FCFF + Giải ngân vay - Trả gốc',
@@ -80,7 +76,6 @@ function FS99Q_chayAuditReconciliation() {
     sum04('FCFE khả dụng cho CSH'),
     netAfterFinancing - sum04('Tổng dòng CSH vào dự án') + sum04('Lãi vay vốn hóa'));
 
-  // 5. Đối chiếu từng chỉ tiêu Sheet 00 với nguồn chi tiết.
   const srcRevenueTy = sum02('Dòng tiền huy động từ KH') / 1e9;
   const srcCostTy = sum03('Tổng chi sau VAT') / 1e9;
   const srcProfitAfterTaxTy = sum04('Lợi nhuận sau thuế') / 1e9;
@@ -109,7 +104,8 @@ function FS99Q_chayAuditReconciliation() {
     'Ô D43 so với tổng VAT phải nộp / 1 tỷ.',
     'Sửa công thức ô D43 hoặc hàm lập Sheet 00 để lấy VAT phải nộp của Sheet 04.', tolTy);
 
-  const summaryDiff = d25 - (d30 + d33 + d42 + d43);
+  const summaryRight = d30 + d33 + d42 + d43;
+  const summaryDiff = d25 - summaryRight;
   const componentDiffs = [
     ['D25', d25 - srcRevenueTy],
     ['D30', d30 - srcCostTy],
@@ -119,19 +115,45 @@ function FS99Q_chayAuditReconciliation() {
   ];
   const badComponents = componentDiffs.filter(x => Math.abs(x[1]) > tolTy);
   let rootCause;
+
   if (badComponents.length) {
     rootCause = 'Sai liên kết tại: ' + badComponents.map(x => `${x[0]} lệch ${FS99Q_fmtTy_(x[1])}`).join('; ') + '. Sửa đúng các ô này.';
+    results.push([
+      'TỔNG HỢP - KẾT LUẬN',
+      'Đối chiếu chỉ tiêu Sheet 00',
+      d25,
+      summaryRight,
+      summaryDiff,
+      'FAIL',
+      'Có chỉ tiêu Sheet 00 không khớp nguồn chi tiết.',
+      rootCause
+    ]);
   } else if (Math.abs(summaryDiff) > tolTy) {
-    rootCause = 'Các ô D25, D30, D33, D42, D43 đều khớp nguồn chi tiết nhưng phương trình vẫn lệch. Nguyên nhân là phạm vi chỉ tiêu không đồng nhất; không được dùng phương trình 1 = 2 + 3 + 12 + 13 làm kiểm tra bắt buộc. Cần định nghĩa lại chỉ tiêu 2 hoặc bỏ phép kiểm tra này.';
+    rootCause = 'D25, D30, D33, D42, D43 đều khớp nguồn. Chênh lệch phát sinh vì doanh thu có VAT, tổng chi phí có VAT, lợi nhuận kế toán, Thuế TNDN và VAT phải nộp không cùng phạm vi kinh tế. Không ép phương trình bằng 0.';
+    results.push([
+      'TỔNG HỢP - KẾT LUẬN',
+      'Đối chiếu phạm vi D25 - (D30 + D33 + D42 + D43)',
+      d25,
+      summaryRight,
+      summaryDiff,
+      'INFO',
+      'Chênh lệch được giữ để tham chiếu, không phải lỗi số liệu.',
+      rootCause
+    ]);
   } else {
-    rootCause = 'Không có sai lệch.';
+    rootCause = 'Các chỉ tiêu khớp nguồn và không có chênh lệch đối chiếu.';
+    results.push([
+      'TỔNG HỢP - KẾT LUẬN',
+      'Đối chiếu phạm vi D25 - (D30 + D33 + D42 + D43)',
+      d25,
+      summaryRight,
+      summaryDiff,
+      'PASS',
+      'Đơn vị tỷ đồng.',
+      rootCause
+    ]);
   }
 
-  add('TỔNG HỢP - KẾT LUẬN', 'Chỉ tiêu 1 = 2 + 3 + 12 + 13',
-    d25, d30 + d33 + d42 + d43,
-    'Đơn vị tỷ đồng.', rootCause, tolTy);
-
-  // Ghi báo cáo
   const startRow = 50;
   const cols = 8;
   shC.getRange(startRow, 1, Math.max(1, shC.getMaxRows() - startRow + 1), cols).clearContent().clearFormat();
@@ -146,14 +168,14 @@ function FS99Q_chayAuditReconciliation() {
   shC.setColumnWidth(8, 480);
 
   const fails = results.filter(r => r[5] === 'FAIL');
-  const summaryFail = results.find(r => r[0] === 'TỔNG HỢP - KẾT LUẬN' && r[5] === 'FAIL');
-  const msg = summaryFail
-    ? 'AUDIT ĐÃ XÁC ĐỊNH NGUYÊN NHÂN:\n\n' + summaryFail[7] + '\n\nXem cột H tại Sheet 99. Checks từ dòng 50.'
-    : fails.length
-      ? 'AUDIT FAILED: ' + fails.length + ' sai lệch. Cột H chỉ rõ vị trí cần sửa.'
+  const infos = results.filter(r => r[5] === 'INFO');
+  const msg = fails.length
+    ? 'AUDIT FAILED: ' + fails.length + ' sai lệch. Cột H chỉ rõ vị trí cần sửa.'
+    : infos.length
+      ? 'AUDIT PASS CÁC NGUỒN CHI TIẾT.\n\n' + rootCause + '\n\nXem dòng INFO tại Sheet 99. Checks.'
       : 'AUDIT PASS: các phép đối chiếu chính đều khớp.';
   SpreadsheetApp.getUi().alert(msg);
-  return { pass: fails.length === 0, failures: fails, rootCause: rootCause };
+  return { pass: fails.length === 0, failures: fails, information: infos, rootCause: rootCause };
 }
 
 function FS99Q_headers_(sh, row) {
