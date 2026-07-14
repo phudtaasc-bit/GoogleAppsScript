@@ -1,6 +1,6 @@
 /*************************************************
  * 99Q_AuditReconciliation.js
- * Audit phân rã và kết luận trực tiếp vị trí cần sửa.
+ * Audit phân rã, tự nhận diện dòng tiêu đề thực tế của từng sheet.
  *************************************************/
 
 function FS99P_buoc5_KiemTraNhanh() {
@@ -33,12 +33,22 @@ function FS99Q_chayAuditReconciliation() {
     ]);
   };
 
-  const h02 = FS99Q_headers_(sh02, 1);
-  const h03 = FS99Q_headers_(sh03, 1);
-  const h04 = FS99Q_headers_(sh04, 2);
-  const sum02 = n => FS99Q_sumCol_(sh02, 2, FS99Q_col_(h02, n));
-  const sum03 = n => FS99Q_sumCol_(sh03, 2, FS99Q_col_(h03, n));
-  const sum04 = n => FS99Q_sumCol_(sh04, 3, FS99Q_col_(h04, n));
+  // Sheet 02 dùng tiêu đề dòng 1; Sheet 03 thường dùng dòng 2; Sheet 04 dùng dòng 2.
+  // Hàm tự dò để không trả về 0 khi cấu trúc tiêu đề khác nhau.
+  const meta02 = FS99Q_detectHeader_(sh02, ['Tháng số', 'Dòng tiền huy động từ KH', 'Thuế TNDN tạm tính']);
+  const meta03 = FS99Q_detectHeader_(sh03, ['Tháng số', 'Tổng chi sau VAT', 'Thuế TNDN']);
+  const meta04 = FS99Q_detectHeader_(sh04, ['Tháng số', 'FCFF_TIPV', 'Thuế TNDN']);
+
+  const sum02 = n => FS99Q_sumCol_(sh02, meta02.headerRow + 1, FS99Q_col_(meta02.headers, n));
+  const sum03 = n => FS99Q_sumCol_(sh03, meta03.headerRow + 1, FS99Q_col_(meta03.headers, n));
+  const sum04 = n => FS99Q_sumCol_(sh04, meta04.headerRow + 1, FS99Q_col_(meta04.headers, n));
+
+  add('CẤU TRÚC', 'Nhận diện dòng tiêu đề Sheet 02', meta02.headerRow, 1,
+    'Dòng tiêu đề được phát hiện tự động.', 'Kiểm tra lại bố cục Sheet 02.', 0);
+  add('CẤU TRÚC', 'Nhận diện dòng tiêu đề Sheet 03', meta03.headerRow, 2,
+    'Dòng tiêu đề được phát hiện tự động.', 'Kiểm tra lại bố cục Sheet 03.', 0);
+  add('CẤU TRÚC', 'Nhận diện dòng tiêu đề Sheet 04', meta04.headerRow, 2,
+    'Dòng tiêu đề được phát hiện tự động.', 'Kiểm tra lại bố cục Sheet 04.', 0);
 
   add('DOANH THU', 'Sheet 02: Tổng doanh thu trước VAT = bán + thuê',
     sum02('Tổng doanh thu trước VAT'),
@@ -61,19 +71,25 @@ function FS99Q_chayAuditReconciliation() {
   add('THUẾ', 'Thuế TNDN Sheet 02 = Sheet 03', sum02('Thuế TNDN tạm tính'), sum03('Thuế TNDN'));
   add('THUẾ', 'Thuế TNDN Sheet 03 = Sheet 04', sum03('Thuế TNDN'), sum04('Thuế TNDN'));
 
+  const inflow = sum04('Dòng tiền huy động từ KH') + sum04('Tổng dòng CSH vào dự án') + sum04('Giải ngân vay');
+  const outflow = parts03 + sum03('VAT đầu vào') + sum04('VAT phải nộp') + sum04('Thuế TNDN') +
+    sum04('Lãi vay vốn hóa') + sum04('Trả gốc');
+  const netAfterFinancing = inflow - outflow;
+
   add('DÒNG TIỀN', 'FCFF Sheet 04 = Dòng tiền trước tài trợ',
     sum04('FCFF_TIPV'), sum04('Dòng tiền trước tài trợ'));
   add('DÒNG TIỀN', 'FCFE = FCFF + Giải ngân vay - Trả gốc',
     sum04('FCFE khả dụng cho CSH'),
     sum04('FCFF_TIPV') + sum04('Giải ngân vay') - sum04('Trả gốc'));
-
-  const inflow = sum04('Dòng tiền huy động từ KH') + sum04('Tổng dòng CSH vào dự án') + sum04('Giải ngân vay');
-  const outflow = parts03 + sum03('VAT đầu vào') + sum04('VAT phải nộp') + sum04('Thuế TNDN') + sum04('Lãi vay vốn hóa') + sum04('Trả gốc');
-  const netAfterFinancing = inflow - outflow;
-  add('DÒNG TIỀN', 'Dòng tiền thuần sau tài trợ = Tổng vào - Tổng ra', netAfterFinancing, inflow - outflow);
+  add('DÒNG TIỀN', 'Dòng tiền thuần sau tài trợ = Tổng vào - Tổng ra',
+    sum04('Dòng tiền thuần sau tài trợ'), netAfterFinancing);
   add('DÒNG TIỀN', 'FCFE = Dòng tiền thuần - CSH góp + Lãi vay',
     sum04('FCFE khả dụng cho CSH'),
     netAfterFinancing - sum04('Tổng dòng CSH vào dự án') + sum04('Lãi vay vốn hóa'));
+  add('DÒNG TIỀN', 'FCFF = Dòng tiền thuần - CSH - Vay + Trả gốc + Lãi vay',
+    sum04('FCFF_TIPV'),
+    netAfterFinancing - sum04('Tổng dòng CSH vào dự án') - sum04('Giải ngân vay') +
+      sum04('Trả gốc') + sum04('Lãi vay vốn hóa'));
 
   const srcRevenueTy = sum02('Dòng tiền huy động từ KH') / 1e9;
   const srcCostTy = (sum03('Tổng chi sau VAT') + sum04('Lãi vay vốn hóa')) / 1e9;
@@ -88,52 +104,46 @@ function FS99Q_chayAuditReconciliation() {
   const d45 = FS99Q_num_(sh00.getRange('D45').getValue());
 
   add('TỔNG HỢP - NGUỒN', 'D25 Tổng doanh thu có VAT = Sheet 02', d25, srcRevenueTy,
-    'Ô D25 so với tổng Dòng tiền huy động từ KH / 1 tỷ.',
-    'Sửa công thức ô D25 hoặc hàm lập Sheet 00.', tolTy);
+    'Tổng Dòng tiền huy động từ KH / 1 tỷ.', 'Sửa D25 hoặc hàm lập Sheet 00.', tolTy);
   add('TỔNG HỢP - NGUỒN', 'D30 Tổng chi phí có VAT = chi phí sau VAT + lãi vay', d30, srcCostTy,
-    'Nguồn đúng: Tổng chi sau VAT Sheet 03 + Lãi vay vốn hóa Sheet 04, chia 1 tỷ.',
-    'Sửa D30 hoặc các dòng D31:D34 nếu tổng chi phí không khớp.', tolTy);
+    'Tổng chi sau VAT Sheet 03 + lãi vay vốn hóa Sheet 04.', 'Sửa D30 hoặc D31:D34.', tolTy);
   add('TỔNG HỢP - NGUỒN', 'D35 Lợi nhuận sau thuế = Sheet 04', d35, srcProfitAfterTaxTy,
-    'Ô D35 so với tổng Lợi nhuận sau thuế / 1 tỷ.',
-    'Sửa công thức ô D35 hoặc hàm lập Sheet 00.', tolTy);
+    'Tổng Lợi nhuận sau thuế / 1 tỷ.', 'Sửa D35.', tolTy);
   add('TỔNG HỢP - NGUỒN', 'D44 Tổng Thuế TNDN = Sheet 03', d44, srcCitTy,
-    'Ô D44 so với tổng Thuế TNDN / 1 tỷ.',
-    'Sửa công thức ô D44 hoặc hàm lập Sheet 00.', tolTy);
+    'Tổng Thuế TNDN / 1 tỷ.', 'Sửa D44.', tolTy);
   add('TỔNG HỢP - NGUỒN', 'D45 Tổng VAT phải nộp = Sheet 04', d45, srcVatPayTy,
-    'Ô D45 so với tổng VAT phải nộp / 1 tỷ.',
-    'Sửa công thức ô D45 hoặc hàm lập Sheet 00.', tolTy);
+    'Tổng VAT phải nộp / 1 tỷ.', 'Sửa D45.', tolTy);
 
   const summaryRight = d30 + d35 + d44 + d45;
   const summaryDiff = d25 - summaryRight;
   const componentDiffs = [
-    ['D25', d25 - srcRevenueTy],
-    ['D30', d30 - srcCostTy],
-    ['D35', d35 - srcProfitAfterTaxTy],
-    ['D44', d44 - srcCitTy],
-    ['D45', d45 - srcVatPayTy]
+    ['D25', d25 - srcRevenueTy], ['D30', d30 - srcCostTy], ['D35', d35 - srcProfitAfterTaxTy],
+    ['D44', d44 - srcCitTy], ['D45', d45 - srcVatPayTy]
   ];
   const badComponents = componentDiffs.filter(x => Math.abs(x[1]) > tolTy);
   let rootCause;
 
   if (badComponents.length) {
-    rootCause = 'Sai liên kết tại: ' + badComponents.map(x => `${x[0]} lệch ${FS99Q_fmtTy_(x[1])}`).join('; ') + '. Sửa đúng các ô này.';
+    rootCause = 'Sai liên kết tại: ' + badComponents.map(x => `${x[0]} lệch ${FS99Q_fmtTy_(x[1])}`).join('; ') + '.';
     results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu chỉ tiêu Sheet 00', d25, summaryRight, summaryDiff,
       'FAIL', 'Có chỉ tiêu Sheet 00 không khớp nguồn chi tiết.', rootCause]);
   } else if (Math.abs(summaryDiff) > tolTy) {
-    rootCause = 'D25, D30, D35, D44, D45 đều khớp nguồn. Chênh lệch phát sinh vì các chỉ tiêu không cùng phạm vi kinh tế. Không ép phương trình bằng 0.';
-    results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu phạm vi D25 - (D30 + D35 + D44 + D45)',
-      d25, summaryRight, summaryDiff, 'INFO', 'Chênh lệch chỉ để tham chiếu.', rootCause]);
+    rootCause = 'Các chỉ tiêu nguồn đều khớp. Chênh lệch mục 14 là chênh lệch phạm vi kinh tế, không ép bằng 0.';
+    results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu phạm vi mục 14', d25, summaryRight, summaryDiff,
+      'INFO', 'Chênh lệch chỉ để tham chiếu.', rootCause]);
   } else {
-    rootCause = 'Các chỉ tiêu khớp nguồn và không có chênh lệch đối chiếu.';
-    results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu phạm vi D25 - (D30 + D35 + D44 + D45)',
-      d25, summaryRight, summaryDiff, 'PASS', 'Đơn vị tỷ đồng.', rootCause]);
+    rootCause = 'Các chỉ tiêu khớp nguồn và không có chênh lệch.';
+    results.push(['TỔNG HỢP - KẾT LUẬN', 'Đối chiếu phạm vi mục 14', d25, summaryRight, summaryDiff,
+      'PASS', 'Đơn vị tỷ đồng.', rootCause]);
   }
 
   const startRow = 50;
   const cols = 8;
   shC.getRange(startRow, 1, Math.max(1, shC.getMaxRows() - startRow + 1), cols).clearContent().clearFormat();
-  shC.getRange(startRow, 1).setValue('AUDIT RECONCILIATION - XÁC ĐỊNH ĐÚNG VỊ TRÍ CẦN SỬA').setFontWeight('bold').setFontSize(14);
-  shC.getRange(startRow + 1, 1, 1, cols).setValues([['Nhóm','Phép kiểm tra','Nguồn A','Nguồn B','Chênh lệch','Trạng thái','Ghi chú','Kết luận / vị trí cần sửa']])
+  shC.getRange(startRow, 1).setValue('AUDIT RECONCILIATION - XÁC ĐỊNH ĐÚNG VỊ TRÍ CẦN SỬA')
+    .setFontWeight('bold').setFontSize(14);
+  shC.getRange(startRow + 1, 1, 1, cols)
+    .setValues([['Nhóm','Phép kiểm tra','Nguồn A','Nguồn B','Chênh lệch','Trạng thái','Ghi chú','Kết luận / vị trí cần sửa']])
     .setFontWeight('bold').setBackground('#d9ead3');
   shC.getRange(startRow + 2, 1, results.length, cols).setValues(results);
   shC.getRange(startRow + 2, 3, results.length, 3).setNumberFormat('#,##0.000');
@@ -145,20 +155,33 @@ function FS99Q_chayAuditReconciliation() {
   const fails = results.filter(r => r[5] === 'FAIL');
   const infos = results.filter(r => r[5] === 'INFO');
   const msg = fails.length
-    ? 'AUDIT FAILED: ' + fails.length + ' sai lệch. Cột H chỉ rõ vị trí cần sửa.'
+    ? 'AUDIT FAILED: ' + fails.length + ' sai lệch. Xem cột H tại Sheet 99. Checks.'
     : infos.length
-      ? 'AUDIT PASS CÁC NGUỒN CHI TIẾT.\n\n' + rootCause + '\n\nXem dòng INFO tại Sheet 99. Checks.'
+      ? 'AUDIT PASS CÁC NGUỒN CHI TIẾT. Mục 14 chỉ còn chênh lệch phạm vi.'
       : 'AUDIT PASS: các phép đối chiếu chính đều khớp.';
   SpreadsheetApp.getUi().alert(msg);
   return { pass: fails.length === 0, failures: fails, information: infos, rootCause: rootCause };
+}
+
+function FS99Q_detectHeader_(sh, requiredNames) {
+  const maxRows = Math.min(5, sh.getLastRow());
+  let best = null;
+  for (let row = 1; row <= maxRows; row++) {
+    const headers = FS99Q_headers_(sh, row);
+    const score = requiredNames.reduce((s, name) => s + (FS99Q_col_(headers, name) > 0 ? 1 : 0), 0);
+    if (!best || score > best.score) best = { headerRow: row, headers: headers, score: score };
+  }
+  if (!best || best.score === 0) {
+    throw new Error('Không nhận diện được dòng tiêu đề tại sheet ' + sh.getName() + '.');
+  }
+  return best;
 }
 
 function FS99Q_headers_(sh, row) {
   return sh.getRange(row, 1, 1, sh.getLastColumn()).getDisplayValues()[0].map(FS99Q_key_);
 }
 function FS99Q_col_(headers, name) {
-  const k = FS99Q_key_(name);
-  const i = headers.indexOf(k);
+  const i = headers.indexOf(FS99Q_key_(name));
   return i < 0 ? 0 : i + 1;
 }
 function FS99Q_sumCol_(sh, startRow, col) {
@@ -176,9 +199,6 @@ function FS99Q_key_(v) {
   return String(v || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd').replace(/[^a-z0-9]+/g, ' ').trim();
 }
-function FS99Q_fmt_(v) {
-  return Math.round(FS99Q_num_(v)).toLocaleString('vi-VN') + ' đồng';
-}
 function FS99Q_fmtTy_(v) {
-  return FS99Q_num_(v).toLocaleString('vi-VN', {minimumFractionDigits: 3, maximumFractionDigits: 3}) + ' tỷ đồng';
+  return FS99Q_num_(v).toLocaleString('vi-VN', { minimumFractionDigits: 3, maximumFractionDigits: 3 }) + ' tỷ đồng';
 }
