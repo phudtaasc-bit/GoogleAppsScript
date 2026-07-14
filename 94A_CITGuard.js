@@ -2,6 +2,11 @@
  * 94A_CITGuard.gs
  * Chốt kiểm tra Thuế TNDN trước khi lập các sheet tổng hợp.
  * Không hiển thị UI; chỉ ném lỗi khi mô hình không nhất quán.
+ *
+ * Bản ổn định:
+ * - Flush và chờ Sheets tính lại trước khi đọc.
+ * - Đọc lại tối đa 3 lần để loại cảnh báo do giá trị cũ.
+ * - Ép kiểu Number và so sánh theo sai số cho phép.
  *************************************************/
 
 function FS94_assertCITConsistency_() {
@@ -15,6 +20,30 @@ function FS94_assertCITConsistency_() {
   }
 
   const tol = 10;
+  const maxAttempts = 3;
+  let lastErrors = [];
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt++) {
+    SpreadsheetApp.flush();
+    if (attempt > 1) Utilities.sleep(1200);
+    SpreadsheetApp.flush();
+
+    const errors = FS94G_collectCITErrors_(sh02, sh03, sh04, tol);
+    if (!errors.length) return true;
+
+    lastErrors = errors;
+    if (attempt < maxAttempts) Utilities.sleep(1200);
+  }
+
+  throw new Error(
+    'Dừng lập sheet tổng hợp vì Thuế TNDN chưa nhất quán sau khi đã đọc lại ' +
+    maxAttempts + ' lần:\n- ' +
+    lastErrors.slice(0, 30).join('\n- ') +
+    (lastErrors.length > 30 ? `\n- ... còn ${lastErrors.length - 30} lỗi khác.` : '')
+  );
+}
+
+function FS94G_collectCITErrors_(sh02, sh03, sh04, tol) {
   const errors = [];
   const taxByMonth02 = {};
 
@@ -58,30 +87,28 @@ function FS94_assertCITConsistency_() {
 
   months.forEach(key => {
     const month = Number(key);
-    const t02 = taxByMonth02[month] || 0;
-    const t03 = taxByMonth03[month] || 0;
-    const t04 = taxByMonth04[month] || 0;
+    const t02 = FS94G_num_(taxByMonth02[month]);
+    const t03 = FS94G_num_(taxByMonth03[month]);
+    const t04 = FS94G_num_(taxByMonth04[month]);
 
     if (t03 < -tol || t04 < -tol) {
       errors.push(`Tháng ${month}: Thuế TNDN âm tại Sheet 03 hoặc Sheet 04.`);
     }
     if (Math.abs(t03 - t02) > tol) {
-      errors.push(`Tháng ${month}: Thuế TNDN Sheet 03 không khớp tổng theo sản phẩm tại Sheet 02.`);
+      errors.push(
+        `Tháng ${month}: Thuế TNDN Sheet 03 không khớp Sheet 02 ` +
+        `(S02=${Math.round(t02)}; S03=${Math.round(t03)}; lệch=${Math.round(t03 - t02)}).`
+      );
     }
     if (Math.abs(t04 - t02) > tol) {
-      errors.push(`Tháng ${month}: Thuế TNDN Sheet 04 không khớp tổng theo sản phẩm tại Sheet 02.`);
+      errors.push(
+        `Tháng ${month}: Thuế TNDN Sheet 04 không khớp Sheet 02 ` +
+        `(S02=${Math.round(t02)}; S04=${Math.round(t04)}; lệch=${Math.round(t04 - t02)}).`
+      );
     }
   });
 
-  if (errors.length) {
-    throw new Error(
-      'Dừng lập sheet tổng hợp vì Thuế TNDN chưa nhất quán:\n- ' +
-      errors.slice(0, 30).join('\n- ') +
-      (errors.length > 30 ? `\n- ... còn ${errors.length - 30} lỗi khác.` : '')
-    );
-  }
-
-  return true;
+  return errors;
 }
 
 function FS94G_readMonthly_(sheet, startRow, taxCol) {
@@ -99,8 +126,9 @@ function FS94G_readMonthly_(sheet, startRow, taxCol) {
 }
 
 function FS94G_num_(value) {
+  if (value === null || value === '' || typeof value === 'undefined') return 0;
   const n = Number(value);
-  return isFinite(n) ? n : 0;
+  return Number.isFinite(n) ? n : 0;
 }
 
 function FS94G_rate_(value) {
