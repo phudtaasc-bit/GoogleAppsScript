@@ -99,11 +99,15 @@ function FS04A_buildAnnualFromSheet04_(ss, sh04) {
     cit: colByHeader('Thuế TNDN'),
     interest: colByHeader('Lãi vay vốn hóa'),
     principal: colByHeader('Trả gốc'),
+    netAfterFinancing: colByHeader('Dòng tiền thuần sau tài trợ'),
     fcff: colByHeader('FCFF_TIPV'),
     fcfe: colByHeader('FCFE khả dụng cho CSH') || colByHeader('FCFE_EPV')
   };
 
-  const required = ['customer','equity','loan','xdTb','gpmb','land','htkt','selling','contingency','vatIn','vatPay','cit','interest','principal','fcff','fcfe'];
+  const required = [
+    'customer','equity','loan','xdTb','gpmb','land','htkt','selling','contingency',
+    'vatIn','vatPay','cit','interest','principal','netAfterFinancing','fcff','fcfe'
+  ];
   const missing = required.filter(k => !source[k]);
   if (missing.length) throw new Error('Thiếu cột nguồn trên Sheet 04: ' + missing.join(', '));
 
@@ -138,7 +142,10 @@ function FS04A_buildAnnualFromSheet04_(ss, sh04) {
     ['B', 'TỔNG DÒNG TIỀN RA'],
     ['C', 'DÒNG TIỀN HIỆU QUẢ'],
     ['1', 'FCFF dự án'],
-    ['2', 'FCFE vốn CSH']
+    ['2', 'Dòng tiền thuần sau tài trợ'],
+    ['3', '(-) Vốn CSH góp mới'],
+    ['4', '(+) Lãi vay'],
+    ['5', 'FCFE vốn CSH']
   ].map(r => [r[0], r[1], '', ...years.map(() => '')]);
 
   sh.getRange(4, 1, rows.length, lastCol).setValues(rows);
@@ -148,7 +155,7 @@ function FS04A_buildAnnualFromSheet04_(ss, sh04) {
     xdTb: 10, gpmb: 11, land: 12, htkt: 13, selling: 14, contingency: 15,
     operating: 16, maintenance: 17, vatIn: 18, vatPay: 19, cit: 20,
     interest: 21, principal: 22, outflowTotal: 23,
-    fcff: 25, fcfe: 26
+    fcff: 25, netAfterFinancing: 26, equityDeduction: 27, interestAddBack: 28, fcfe: 29
   };
 
   const setSum = (row, srcCol) => {
@@ -194,14 +201,29 @@ function FS04A_buildAnnualFromSheet04_(ss, sh04) {
   setRowTotal(R.outflowTotal, R.xdTb, R.principal);
 
   setSum(R.fcff, source.fcff);
-  setSum(R.fcfe, source.fcfe);
+  setSum(R.netAfterFinancing, source.netAfterFinancing);
+  setSum(R.equityDeduction, source.equity);
+  setSum(R.interestAddBack, source.interest);
+
+  // Quan hệ trình bày bắt buộc:
+  // FCFE = Dòng tiền thuần sau tài trợ - Vốn CSH góp mới + Lãi vay.
+  sh.getRange(R.fcfe, totalCol).setFormula(
+    `=C${R.netAfterFinancing}-C${R.equityDeduction}+C${R.interestAddBack}`
+  );
+  years.forEach((_, i) => {
+    const c = yearStartCol + i;
+    const L = FS04A_colLetter_(c);
+    sh.getRange(R.fcfe, c).setFormula(
+      `=${L}${R.netAfterFinancing}-${L}${R.equityDeduction}+${L}${R.interestAddBack}`
+    );
+  });
 
   SpreadsheetApp.flush();
   FS04A_formatAnnualSource_(sh, lastCol);
 }
 
 function FS04A_formatAnnualSource_(sh, lastCol) {
-  const lastRow = 26;
+  const lastRow = 29;
   sh.setFrozenRows(3);
   sh.setFrozenColumns(0);
   sh.getRange(1, 1, lastRow, lastCol)
@@ -216,7 +238,7 @@ function FS04A_formatAnnualSource_(sh, lastCol) {
     .setBackground('#A6A6A6').setFontColor('#FFFFFF');
 
   [4, 9, 24].forEach(row => sh.getRange(row, 1, 1, lastCol).setFontWeight('bold').setBackground('#FFC000').setFontColor('#000000'));
-  [8, 23, 25, 26].forEach(row => sh.getRange(row, 1, 1, lastCol).setFontWeight('bold'));
+  [8, 23, 25, 29].forEach(row => sh.getRange(row, 1, 1, lastCol).setFontWeight('bold'));
 
   sh.getRange(4, 3, lastRow - 3, lastCol - 2).setNumberFormat('#,##0.0').setHorizontalAlignment('right');
   sh.getRange(1, 1, lastRow, 2).setHorizontalAlignment('left');
