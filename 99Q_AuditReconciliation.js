@@ -77,7 +77,8 @@ function FS99Q_chayAuditReconciliation() {
     netAfterFinancing - sum04('Tổng dòng CSH vào dự án') + sum04('Lãi vay vốn hóa'));
 
   const srcRevenueTy = sum02('Dòng tiền huy động từ KH') / 1e9;
-  const srcCostTy = sum03('Tổng chi sau VAT') / 1e9;
+  // D30 bao gồm toàn bộ chi phí sau VAT tại Sheet 03 và lãi vay vốn hóa.
+  const srcCostTy = (sum03('Tổng chi sau VAT') + sum04('Lãi vay vốn hóa')) / 1e9;
   const srcProfitAfterTaxTy = sum04('Lợi nhuận sau thuế') / 1e9;
   const srcCitTy = sum03('Thuế TNDN') / 1e9;
   const srcVatPayTy = sum04('VAT phải nộp') / 1e9;
@@ -91,9 +92,9 @@ function FS99Q_chayAuditReconciliation() {
   add('TỔNG HỢP - NGUỒN', 'D25 Tổng doanh thu có VAT = Sheet 02', d25, srcRevenueTy,
     'Ô D25 so với tổng Dòng tiền huy động từ KH / 1 tỷ.',
     'Sửa công thức ô D25 hoặc hàm lập Sheet 00 để link đúng cột Dòng tiền huy động từ KH của Sheet 02.', tolTy);
-  add('TỔNG HỢP - NGUỒN', 'D30 Tổng chi phí có VAT = Sheet 03', d30, srcCostTy,
-    'Ô D30 so với Tổng chi sau VAT / 1 tỷ.',
-    'Sửa công thức ô D30 hoặc hàm lập Sheet 00 để lấy Tổng chi sau VAT của Sheet 03.', tolTy);
+  add('TỔNG HỢP - NGUỒN', 'D30 Tổng chi phí có VAT = chi phí sau VAT + lãi vay', d30, srcCostTy,
+    'Nguồn đúng: Tổng chi sau VAT Sheet 03 + Lãi vay vốn hóa Sheet 04, chia 1 tỷ.',
+    'Sửa công thức D30/D31/D32/D45/D46 hoặc nguồn lãi vay nếu tổng chi phí không khớp.', tolTy);
   add('TỔNG HỢP - NGUỒN', 'D33 Lợi nhuận sau thuế = Sheet 04', d33, srcProfitAfterTaxTy,
     'Ô D33 so với tổng Lợi nhuận sau thuế / 1 tỷ.',
     'Sửa công thức ô D33 hoặc hàm lập Sheet 00 để lấy Lợi nhuận sau thuế của Sheet 04.', tolTy);
