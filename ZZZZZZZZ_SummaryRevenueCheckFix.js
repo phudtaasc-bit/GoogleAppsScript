@@ -3,11 +3,10 @@
  *
  * Nguyên tắc:
  * - Chỉ tiêu 1 trên Sheet 00 luôn lấy trực tiếp từ Sheet 02.
- * - Đẳng thức 1 = 2 + 3 + 12 + 13 chỉ là phép đối chiếu khác phạm vi,
- *   không dùng để ghi đè doanh thu hoặc ép kết quả bằng 0.
  * - Chi phí bán hàng, vận hành và bảo trì tại mục III đều trình bày sau VAT.
- * - VAT từng khoản chi được tính theo tỷ lệ cấu hình tại Sheet 01. Kỹ thuật;
- *   không phân bổ toàn bộ VAT đầu vào của dự án cho chi phí bán hàng.
+ * - VAT từng khoản chi lấy theo cấu hình tại Sheet 01. Kỹ thuật.
+ * - Các khoản 2.3 và 2.4 nằm ngay sau khoản 2.2.
+ * - Không dùng công thức chứa số thập phân theo locale để tránh #ERROR.
  *************************************************/
 
 const FSZZZZZZZZ_BASE_LAP_SHEET00_ = FS_lapSheet00;
@@ -17,14 +16,11 @@ FS_lapSheet00 = function() {
   FSZZZZZZZZ_restoreSummaryRevenueAndCheck_();
 };
 
-/**
- * Chạy riêng khi chỉ cần sửa Sheet 00 hiện tại, không lập lại mô hình.
- */
 function FSZZZZZZZZ_suaTongHopDoanhThuVaKiemTra() {
   FSZZZZZZZZ_restoreSummaryRevenueAndCheck_();
   SpreadsheetApp.flush();
   SpreadsheetApp.getUi().alert(
-    'Đã cập nhật doanh thu, chi phí bán hàng/vận hành/bảo trì sau VAT và tiêu chí đối chiếu trên Sheet 00.'
+    'Đã sắp xếp lại mục chi phí và cập nhật công thức Sheet 00.'
   );
 }
 
@@ -38,35 +34,23 @@ function FSZZZZZZZZ_restoreSummaryRevenueAndCheck_() {
     throw new Error('Thiếu Sheet 00. Tổng hợp, 01. Kỹ thuật, 02. Doanh thu hoặc 03. Chi phí & Vốn.');
   }
 
-  const headers02 = sh02
-    .getRange(1, 1, 1, sh02.getLastColumn())
-    .getDisplayValues()[0];
-  const headers03 = sh03
-    .getRange(1, 1, 1, sh03.getLastColumn())
-    .getDisplayValues()[0];
+  const headers02 = sh02.getRange(1, 1, 1, sh02.getLastColumn()).getDisplayValues()[0];
+  const headers03 = sh03.getRange(1, 1, 1, sh03.getLastColumn()).getDisplayValues()[0];
 
   const cashCol = FSZZZZZZZZ_findHeader_(headers02, [
     'Dòng tiền huy động từ KH',
     'Dòng tiền huy động từ khách hàng'
   ]);
-  if (cashCol < 1) {
-    throw new Error('Không tìm thấy cột Dòng tiền huy động từ KH trên Sheet 02.');
-  }
-
-  const sellingCol = FSZZZZZZZZ_findHeader_(headers03, [
-    'Chi phí bán hàng trước VAT'
-  ]);
+  const sellingCol = FSZZZZZZZZ_findHeader_(headers03, ['Chi phí bán hàng trước VAT']);
   const opCol = FSZZZZZZZZ_findHeader_(headers03, [
     'Chi phí vận hành thuê trước VAT',
     'Chi phí vận hành trước VAT'
   ]);
-  const maintCol = FSZZZZZZZZ_findHeader_(headers03, [
-    'Chi phí bảo trì trước VAT'
-  ]);
+  const maintCol = FSZZZZZZZZ_findHeader_(headers03, ['Chi phí bảo trì trước VAT']);
 
-  const sellingVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech, [
-    'Chi phí bán hàng'
-  ], 0);
+  if (cashCol < 1) throw new Error('Không tìm thấy cột Dòng tiền huy động từ KH trên Sheet 02.');
+
+  const sellingVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech, ['Chi phí bán hàng'], 0);
   const opVatRate = FSZZZZZZZZ_getCommonCostVatRate_(tech, [
     'Chi phí vận hành',
     'Chi phí vận hành thuê'
@@ -77,90 +61,62 @@ function FSZZZZZZZZ_restoreSummaryRevenueAndCheck_() {
   ], opVatRate);
 
   const cashLetter = FSZZZZZZZZ_colLetter_(cashCol);
-  const s02 = `'02. Doanh thu'`;
-  const s03 = `'03. Chi phí & Vốn'`;
-
-  // Chỉ tiêu 1: luôn link trực tiếp từ Sheet chi tiết.
   sh00.getRange('D25').setFormula(
-    `=SUM(${s02}!${cashLetter}2:${cashLetter})/1000000000`
+    `=SUM('02. Doanh thu'!${cashLetter}2:${cashLetter})/1000000000`
   );
 
-  // Chi phí bán hàng sau VAT: VAT đúng của chính chi phí bán hàng.
-  // Không dùng vatAlloc('L') vì công thức cũ phân bổ cả VAT đầu vào dự án vào cột bán hàng.
-  sh00.getRange('B32').setValue('Chi phí bán hàng (sau VAT)');
-  if (sellingCol > 0) {
-    const letter = FSZZZZZZZZ_colLetter_(sellingCol);
-    sh00.getRange('D32').setFormula(
-      `=SUM(${s03}!${letter}2:${letter})*(1+${sellingVatRate})/1000000000`
-    );
-  } else {
-    sh00.getRange('D32').setValue(0);
-  }
+  // Lưu khối chỉ tiêu từ LNST đến VAT phải nộp do Sheet 00 gốc tạo tại dòng 33:43.
+  // Sau đó chuyển nguyên khối xuống dòng 35:45 để chèn 2.3 và 2.4 ngay sau 2.2.
+  const sourceBlock = sh00.getRange('A33:E43');
+  sourceBlock.copyTo(sh00.getRange('A35:E45'), SpreadsheetApp.CopyPasteType.PASTE_NORMAL, false);
 
-  // D44 chỉ phản ánh chênh lệch giữa các chỉ tiêu không đồng nhất phạm vi kinh tế.
-  const checkRow = 44;
+  // Xóa vùng mục chi phí và ghi lại đúng thứ tự 2.2 -> 2.3 -> 2.4.
+  sh00.getRange('A32:E34').clearContent();
+
+  const sellingAfterVat = FSZZZZZZZZ_sumColumn_(sh03, sellingCol, 2) * (1 + sellingVatRate) / 1e9;
+  const opAfterVat = FSZZZZZZZZ_sumColumn_(sh03, opCol, 2) * (1 + opVatRate) / 1e9;
+  const maintAfterVat = FSZZZZZZZZ_sumColumn_(sh03, maintCol, 2) * (1 + maintVatRate) / 1e9;
+
+  const detailRows = [
+    ['2.2', 'Chi phí bán hàng (sau VAT)', 'tỷ đồng', sellingAfterVat, ''],
+    ['2.3', 'Chi phí vận hành (sau VAT)', 'tỷ đồng', opAfterVat, ''],
+    ['2.4', 'Chi phí bảo trì (sau VAT)', 'tỷ đồng', maintAfterVat, '']
+  ];
+  sh00.getRange('A32:E34').setValues(detailRows);
+  sh00.getRange('D32:D34').setNumberFormat('#,##0.0;[Red]-#,##0.0');
+  sh00.getRange('E32:E34').clearContent();
+
+  // Tổng chi phí có VAT = vốn đầu tư + ba khoản chi phí hoạt động sau VAT.
+  sh00.getRange('D30').setFormula('=SUM(D31:D34)');
+
+  // Dòng đối chiếu chuyển xuống dòng 46 sau khi chèn 2 dòng chi phí.
+  const checkRow = 46;
   sh00.getRange(checkRow, 1, 1, 5).clearContent();
   sh00.getRange(checkRow, 1).setValue('14');
   sh00.getRange(checkRow, 2).setValue('Chênh lệch đối chiếu phạm vi');
   sh00.getRange(checkRow, 3).setValue('tỷ đồng');
-  sh00.getRange(checkRow, 4).setFormula('=D25-(D30+D33+D42+D43)');
-  sh00.getRange(checkRow, 5).setValue(
-    'Tham chiếu: Doanh thu có VAT - (Tổng chi phí có VAT + LNST + Thuế TNDN + VAT phải nộp). ' +
-    'Các chỉ tiêu không cùng phạm vi kinh tế; kết quả không bắt buộc bằng 0 và không dùng để điều chỉnh số liệu.'
-  );
+  sh00.getRange(checkRow, 4).setFormula('=D25-(D30+D35+D44+D45)');
+  sh00.getRange(checkRow, 5).clearContent();
 
-  sh00.getRange(checkRow, 1, 1, 5)
+  // Chuẩn hóa định dạng toàn bộ phần III sau khi dịch chuyển dòng.
+  sh00.getRange('A32:E46')
     .setFontFamily('Times New Roman')
     .setFontSize(11)
     .setBorder(true, true, true, true, true, true)
     .setVerticalAlignment('middle');
-  sh00.getRange(checkRow, 1, 1, 3).setFontWeight('bold');
-  sh00.getRange(checkRow, 4)
-    .setNumberFormat('#,##0.0;[Red]-#,##0.0')
-    .setFontWeight('bold');
-  sh00.getRange(checkRow, 5).setWrap(true);
-  sh00.setRowHeight(checkRow, 48);
+  sh00.getRange('D30:D46').setNumberFormat('#,##0.0;[Red]-#,##0.0');
+  sh00.getRange('A46:C46').setFontWeight('bold');
+  sh00.getRange('D46').setFontWeight('bold');
+  sh00.setRowHeight(46, 24);
 
-  // Bổ sung hai cấu phần chi phí sau bảng hiện hữu để không làm dịch chuyển D25:D44.
-  const detailRows = [
-    [45, '2.3', 'Chi phí vận hành (sau VAT)', opCol, opVatRate],
-    [46, '2.4', 'Chi phí bảo trì (sau VAT)', maintCol, maintVatRate]
-  ];
+  SpreadsheetApp.flush();
+}
 
-  detailRows.forEach(item => {
-    const row = item[0];
-    const tt = item[1];
-    const label = item[2];
-    const col = item[3];
-    const vatRate = item[4];
-
-    sh00.getRange(row, 1, 1, 5).clearContent();
-    sh00.getRange(row, 1).setValue(tt);
-    sh00.getRange(row, 2).setValue(label);
-    sh00.getRange(row, 3).setValue('tỷ đồng');
-
-    if (col > 0) {
-      const letter = FSZZZZZZZZ_colLetter_(col);
-      sh00.getRange(row, 4).setFormula(
-        `=SUM(${s03}!${letter}2:${letter})*(1+${vatRate})/1000000000`
-      );
-    } else {
-      sh00.getRange(row, 4).setValue(0);
-    }
-
-    sh00.getRange(row, 5).setValue(
-      `Nguồn: Sheet 03; VAT theo cấu hình Sheet 01. Kỹ thuật (${vatRate * 100}%)`
-    );
-    sh00.getRange(row, 1, 1, 5)
-      .setFontFamily('Times New Roman')
-      .setFontSize(11)
-      .setBorder(true, true, true, true, true, true)
-      .setVerticalAlignment('middle');
-    sh00.getRange(row, 4).setNumberFormat('#,##0.0;[Red]-#,##0.0');
-  });
-
-  // Tổng chi phí có VAT bao gồm vốn đầu tư, bán hàng, vận hành và bảo trì sau VAT.
-  sh00.getRange('D30').setFormula('=D31+D32+D45+D46');
+function FSZZZZZZZZ_sumColumn_(sheet, col, startRow) {
+  if (!col || col < 1 || sheet.getLastRow() < startRow) return 0;
+  return sheet.getRange(startRow, col, sheet.getLastRow() - startRow + 1, 1)
+    .getValues()
+    .reduce((sum, row) => sum + (Number(row[0]) || 0), 0);
 }
 
 function FSZZZZZZZZ_getCommonCostVatRate_(tech, names, fallback) {
@@ -173,24 +129,20 @@ function FSZZZZZZZZ_getCommonCostVatRate_(tech, names, fallback) {
   let inBlock = false;
 
   for (let r = 0; r < values.length; r++) {
-    const first = FSZZZZZZZZ_norm_(values[r][0]);
+    const firstRaw = String(values[r][0] || '').trim();
+    const first = FSZZZZZZZZ_norm_(firstRaw);
     if (first === 'chi_phi_chung' || first === 'chi phi chung') {
       inBlock = true;
       continue;
     }
     if (!inBlock) continue;
 
-    // Sang block kỹ thuật khác thì dừng.
-    if (r > 0 && /^[A-Z0-9_]{4,}$/.test(String(values[r][0] || '').trim()) && first !== 'chi_phi_chung') {
-      break;
-    }
+    if (r > 0 && /^[A-Z0-9_]{4,}$/.test(firstRaw) && first !== 'chi_phi_chung') break;
 
     if (targets.indexOf(first) >= 0) {
-      // Cột C trong block CHI_PHI_CHUNG là tỷ lệ VAT.
       return FSZZZZZZZZ_rate_(values[r][2]);
     }
   }
-
   return FSZZZZZZZZ_rate_(fallback);
 }
 
