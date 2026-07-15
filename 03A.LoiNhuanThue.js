@@ -1,8 +1,88 @@
-function FS_lapSheet03A(){return FS_lapSheet03A_voiLaiVay_(null);}
-function FS_lapSheet03A_voiLaiVay_(interest){
- const ss=SpreadsheetApp.getActive(),tech=ss.getSheetByName(FS_CFG.SHEETS.TECH),rev=ss.getSheetByName(FS_CFG.SHEETS.REVENUE),cost=ss.getSheetByName(FS_CFG.SHEETS.COST);if(!tech||!rev||!cost)throw new Error('Cần lập 01, 02, 03 trước.');
- const info=FS_readInfo_(tech),months=FS_num_(info['Số tháng mô hình']),products=FS_readBlock_(tech,'SAN_PHAM').map(r=>({name:String(r[0]||''),method:String(r[1]||''),area:FS_num_(r[2]),cpxd:FS_num_(r[5]),cit:FS_rate_(r[7]),landArea:FS_num_(r[11])})).filter(x=>x.name);const revRows=rev.getRange(2,1,Math.max(0,rev.getLastRow()-1),18).getValues(),costRows=cost.getRange(2,1,months,20).getValues();
- const totalBuild=products.reduce((s,p)=>s+p.area*p.cpxd,0)||1,totalLand=products.reduce((s,p)=>s+(p.landArea||p.area),0)||1;const rows=[];
- for(let t=1;t<=months;t++){const c=costRows[t-1]||[],monthInterest=interest?FS_num_(interest[t-1]):0;const monthRev=revRows.filter(r=>FS_num_(r[0])===t),investBase=FS_num_(c[6])+FS_num_(c[9])+FS_num_(c[13]);for(const p of products){const rr=monthRev.find(r=>FS_key_(r[4])===FS_key_(p.name))||[];const revenue=FS_num_(rr[14]),sale=FS_num_(rr[12]),rent=FS_num_(rr[13]),type=FS_productType_(p.name,p.method);const buildShare=(p.area*p.cpxd)/totalBuild,landShare=(p.landArea||p.area)/totalLand;const directShare=type==='SALE'?(sale/(monthRev.reduce((s,r)=>s+FS_num_(r[12]),0)||1)):(rent/(monthRev.reduce((s,r)=>s+FS_num_(r[13]),0)||1));const xd=FS_num_(c[6])*buildShare,gpmb=FS_num_(c[7])*landShare,land=FS_num_(c[8])*landShare,htkt=FS_num_(c[9])*buildShare,sell=type==='SALE'?FS_num_(c[10])*directShare:0,op=type==='RENT'?FS_num_(c[11])*directShare:0,maint=type==='RENT'?FS_num_(c[12])*directShare:0,reserve=FS_num_(c[13])*buildShare;const costTax=xd+gpmb+land+htkt+sell+op+maint+reserve;const interestAlloc=monthInterest*((investBase?((xd+htkt+reserve)/investBase):buildShare));const pbt=revenue-costTax-interestAlloc,taxable=Math.max(0,pbt),cit=taxable*p.cit,pat=pbt-cit;rows.push([t,c[1],p.name,p.method,revenue,xd,gpmb,land,htkt,sell,op,maint,reserve,costTax,interestAlloc,pbt,taxable,p.cit,cit,pat]);}}
- const sh=FS_getOrCreateSheet_(ss,FS_CFG.SHEETS.PROFIT);FS_resetSheet_(sh,rows.length+1,20);sh.getRange(1,1,1,20).setValues([['Tháng số','Tháng','Sản phẩm','Hình thức','Doanh thu trước VAT','Giá vốn XD/TB','Giá vốn GPMB','Giá vốn tiền đất','Giá vốn HTKT','Chi phí bán hàng','Chi phí vận hành','Chi phí bảo trì','Giá vốn dự phòng','Tổng chi phí tính thuế trước lãi vay','Lãi vay phân bổ','Lợi nhuận trước thuế','Thu nhập chịu thuế','Thuế suất TNDN','Thuế TNDN','LNST']]);if(rows.length)sh.getRange(2,1,rows.length,20).setValues(rows);sh.setFrozenRows(1);sh.getRange(1,1,1,20).setFontWeight('bold').setBackground('#e2f0d9');sh.autoResizeColumns(1,20);return rows;
+function FS_lapSheet03A() { return FS_lapSheet03A_voiLaiVay_(null); }
+
+function FS_lapSheet03A_voiLaiVay_(interest) {
+  const ss = SpreadsheetApp.getActive();
+  const rev = ss.getSheetByName(FS_CFG.SHEETS.REVENUE);
+  const cost = ss.getSheetByName(FS_CFG.SHEETS.COST);
+  if (!rev || !cost) throw new Error('Cần lập 02. Doanh thu và 03. Chi phí & Vốn trước.');
+
+  const revRows = rev.getLastRow() > 1 ? rev.getRange(2, 1, rev.getLastRow() - 1, 20).getValues() : [];
+  const costRows = cost.getLastRow() > 1 ? cost.getRange(2, 1, cost.getLastRow() - 1, 20).getValues() : [];
+  const costByKey = {};
+  costRows.forEach(r => costByKey[FS_factKey_(r[0], r[4])] = r);
+
+  const totals = {};
+  revRows.forEach(r => {
+    const code = String(r[4]);
+    if (!totals[code]) totals[code] = { saleRevenue: 0, rentActiveMonths: 0, capitalPool: 0 };
+    totals[code].saleRevenue += FS_num_(r[13]);
+    if (FS_num_(r[14]) > 0) totals[code].rentActiveMonths++;
+  });
+  costRows.forEach(r => {
+    const code = String(r[4]);
+    if (!totals[code]) totals[code] = { saleRevenue: 0, rentActiveMonths: 0, capitalPool: 0 };
+    totals[code].capitalPool += FS_num_(r[9]) + FS_num_(r[10]) + FS_num_(r[11]) + FS_num_(r[12]) + FS_num_(r[16]);
+  });
+
+  const investmentByMonth = {};
+  costRows.forEach(r => {
+    const t = FS_num_(r[0]);
+    investmentByMonth[t] = (investmentByMonth[t] || 0) + FS_num_(r[9]) + FS_num_(r[10]) + FS_num_(r[11]) + FS_num_(r[12]) + FS_num_(r[16]);
+  });
+
+  const rows = [];
+  revRows.forEach(r => {
+    const t = FS_num_(r[0]);
+    const code = String(r[4]);
+    const c = costByKey[FS_factKey_(t, code)] || [];
+    const revenue = FS_num_(r[15]);
+    const saleRevenue = FS_num_(r[13]);
+    const rentRevenue = FS_num_(r[14]);
+    const capitalPool = totals[code].capitalPool;
+
+    const capitalRecognized = r[6] === 'Bán'
+      ? capitalPool * FS_ratio_(saleRevenue, totals[code].saleRevenue)
+      : (rentRevenue > 0 ? capitalPool / Math.max(1, totals[code].rentActiveMonths) : 0);
+
+    const currentInvest = FS_num_(c[9]) + FS_num_(c[10]) + FS_num_(c[11]) + FS_num_(c[12]) + FS_num_(c[16]);
+    const interestMonth = interest ? FS_num_(interest[t - 1]) : 0;
+    const interestAlloc = interestMonth * FS_ratio_(currentInvest, investmentByMonth[t]);
+
+    const selling = FS_num_(c[13]);
+    const operating = FS_num_(c[14]);
+    const maintenance = FS_num_(c[15]);
+    const taxCost = capitalRecognized + selling + operating + maintenance;
+    const pbt = revenue - taxCost - interestAlloc;
+    const taxable = Math.max(0, pbt);
+    const citRate = FS_rate_(r[19]);
+    const cit = taxable * citRate;
+    const pat = pbt - cit;
+
+    rows.push([
+      r[0], r[1], r[2], r[3], code, r[5], r[6], revenue,
+      capitalRecognized, selling, operating, maintenance, taxCost,
+      interestAlloc, pbt, taxable, citRate, cit, pat
+    ]);
+  });
+
+  const sh = FS_getOrCreateSheet_(ss, FS_CFG.SHEETS.PROFIT);
+  FS_resetSheet_(sh, rows.length + 1, 19);
+  sh.getRange(1, 1, 1, 19).setValues([[
+    'Tháng số', 'Tháng', 'Năm', 'Quý', 'Mã SP', 'Tên sản phẩm', 'Loại hình',
+    'Doanh thu trước VAT', 'Giá vốn đầu tư ghi nhận', 'Chi phí bán hàng',
+    'Chi phí vận hành', 'Chi phí bảo trì', 'Tổng chi phí tính thuế trước lãi vay',
+    'Lãi vay phân bổ', 'Lợi nhuận trước thuế', 'Thu nhập chịu thuế',
+    'Thuế suất TNDN (%)', 'Thuế TNDN', 'LNST'
+  ]]);
+  if (rows.length) sh.getRange(2, 1, rows.length, 19).setValues(rows);
+  sh.setFrozenRows(1);
+  sh.setFrozenColumns(7);
+  sh.getRange(1, 1, 1, 19).setFontWeight('bold').setBackground('#e2f0d9').setWrap(true);
+  if (rows.length) {
+    sh.getRange(2, 2, rows.length, 1).setNumberFormat('MM/yyyy');
+    sh.getRange(2, 8, rows.length, 12).setNumberFormat('#,##0.00');
+    sh.getRange(2, 17, rows.length, 1).setNumberFormat('0.00%');
+  }
+  sh.autoResizeColumns(1, 19);
+  return rows;
 }
