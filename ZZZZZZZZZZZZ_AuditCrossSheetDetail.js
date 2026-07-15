@@ -135,7 +135,7 @@ function FS99X_makeRow_(indicator, leftName, left, rightName, right) {
       right.found ? right.value / 1e9 : '',
       '',
       'MISSING',
-      'Không tìm thấy cột tại: ' + missing.join(', ') + '. Cần kiểm tra tên tiêu đề.'
+      'Không có chỉ tiêu tại: ' + missing.join(', ') + '. Giá trị được để trống.'
     ];
   }
 
@@ -157,6 +157,10 @@ function FS99X_readTotals_(sheetName, aliasGroups) {
   if (!sh) throw new Error('Không tìm thấy sheet ' + sheetName + '.');
 
   const headerRow = FS99X_detectHeaderRow_(sh, aliasGroups);
+  if (headerRow < 1) {
+    return aliasGroups.map(() => ({ found: false, value: 0, header: '' }));
+  }
+
   const headers = sh.getRange(headerRow, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
   const dataStart = headerRow + 1;
   const n = Math.max(0, sh.getLastRow() - headerRow);
@@ -172,32 +176,41 @@ function FS99X_readTotals_(sheetName, aliasGroups) {
 
 function FS99X_detectHeaderRow_(sh, aliasGroups) {
   const maxRows = Math.min(8, sh.getLastRow());
-  let bestRow = 1;
-  let bestHits = -1;
+  let bestRow = -1;
+  let bestHits = 0;
+
   for (let r = 1; r <= maxRows; r++) {
     const headers = sh.getRange(r, 1, 1, sh.getLastColumn()).getDisplayValues()[0];
     let hits = 0;
-    aliasGroups.forEach(a => { if (FS99X_findHeader_(headers, a) >= 0) hits++; });
+    aliasGroups.forEach(a => {
+      if (FS99X_findHeader_(headers, a) >= 0) hits++;
+    });
     if (hits > bestHits) {
       bestHits = hits;
       bestRow = r;
     }
   }
-  return bestRow;
+
+  return bestHits > 0 ? bestRow : -1;
 }
 
 function FS99X_findHeader_(headers, aliases) {
   const normalizedHeaders = headers.map(FS99X_key_);
-  for (const alias of aliases) {
-    const key = FS99X_key_(alias);
-    let idx = normalizedHeaders.indexOf(key);
+  const normalizedAliases = aliases.map(FS99X_key_).filter(k => k.length >= 3);
+
+  for (const key of normalizedAliases) {
+    const idx = normalizedHeaders.findIndex(h => h && h === key);
     if (idx >= 0) return idx;
   }
-  for (const alias of aliases) {
-    const key = FS99X_key_(alias);
-    const idx = normalizedHeaders.findIndex(h => h.indexOf(key) >= 0 || key.indexOf(h) >= 0);
+
+  for (const key of normalizedAliases) {
+    const idx = normalizedHeaders.findIndex(h => {
+      if (!h || h.length < 3) return false;
+      return h.indexOf(key) >= 0 || key.indexOf(h) >= 0;
+    });
     if (idx >= 0) return idx;
   }
+
   return -1;
 }
 
