@@ -17,7 +17,13 @@ const FS_CFG = Object.freeze({
   CONVERGENCE: { tolerance: 1, maxIterations: 100 }
 });
 
-const FS = Object.freeze({ INPUT: FS_CFG.SHEETS.INPUT, TECH: FS_CFG.SHEETS.TECH });
+function FS_capNhatKyThuat() {
+  FS_taoKyThuatTuDauVao();
+  const ss = SpreadsheetApp.getActive();
+  const legacy = ss.getSheetByName(FS_CFG.SHEETS.TECH_LEGACY);
+  const current = ss.getSheetByName(FS_CFG.SHEETS.TECH);
+  if (legacy && !current) legacy.setName(FS_CFG.SHEETS.TECH);
+}
 
 function FS_getOrCreateSheet_(ss, name, legacyName) {
   let sh = ss.getSheetByName(name);
