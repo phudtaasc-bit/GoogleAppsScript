@@ -1,6 +1,6 @@
 function onOpen() {
   SpreadsheetApp.getUi().createMenu('FS - MÔ HÌNH ĐẦU TƯ')
-    .addItem('1. Cập nhật 01A. Kỹ thuật', 'FS_taoKyThuatTuDauVao')
+    .addItem('1. Cập nhật 01A. Kỹ thuật', 'FS_capNhatKyThuat')
     .addItem('2. Lập 02. Doanh thu', 'FS_lapSheet02')
     .addItem('3. Lập 03. Chi phí & Vốn', 'FS_lapSheet03')
     .addItem('4. Lập 03A. Lợi nhuận & Thuế', 'FS_lapSheet03A')
@@ -17,7 +17,7 @@ function onOpen() {
 }
 
 function FS_chayToanBo() {
-  FS_taoKyThuatTuDauVao();
+  FS_capNhatKyThuat();
   FS_lapSheet02();
   FS_lapSheet03();
   FS_hoiTuTaiTro();
