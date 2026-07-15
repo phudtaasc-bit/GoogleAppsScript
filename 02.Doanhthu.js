@@ -1,4 +1,4 @@
-/*************************************************
+﻿/*************************************************
  * 02_DoanhThu.gs - FS V2.0
  * Thay toàn bộ file / hàm lập Sheet 02 bằng bản này.
  *
@@ -27,6 +27,7 @@ function FS_lapSheet02() {
   const info = FS02V2_readInfo_(tech);
   const soThang = Number(info['Số tháng mô hình']) || 0;
   const startDate = info['Ngày bắt đầu dự án'];
+  const priceGrowthRate = FS02V2_rate_(info['Tỷ lệ tăng giá/năm']);
 
   if (!soThang || !startDate) {
     throw new Error('Thiếu "Số tháng mô hình" hoặc "Ngày bắt đầu dự án" tại sheet 01. Kỹ thuật.');
@@ -121,8 +122,12 @@ function FS_lapSheet02() {
       const saleProgress = isSale ? FS02V2_getSaleProgress_(p.name, t, schedules) : 0;
       const rentRate = isRent ? FS02V2_getRentActiveRate_(p.name, t, schedules) : 0;
 
-      const saleRevenue = isSale ? p.area * p.salePrice * saleProgress : 0;
-      const rentRevenue = isRent ? p.area * p.rentPrice * p.occupancy * rentRate : 0;
+      const priceFactor = FS02V2_priceGrowthFactor_(priceGrowthRate, t);
+      const salePrice = p.salePrice * priceFactor;
+      const rentPrice = p.rentPrice * priceFactor;
+
+      const saleRevenue = isSale ? p.area * salePrice * saleProgress : 0;
+      const rentRevenue = isRent ? p.area * rentPrice * p.occupancy * rentRate : 0;
       const revenue = saleRevenue + rentRevenue;
 
       const vatOut = revenue * p.vatOut;
@@ -179,8 +184,8 @@ function FS_lapSheet02() {
         p.name,                                 // E
         p.method,                               // F
         p.area,                                 // G
-        p.salePrice,                            // H
-        p.rentPrice,                            // I
+        salePrice,                              // H
+        rentPrice,                              // I
         p.cpxdUnit,                             // J
         p.occupancy,                            // K
         p.opCostRate,                           // L
@@ -581,6 +586,17 @@ function FS02V2_sum_(arr) {
   return arr.reduce((s, v) => s + (Number(v) || 0), 0);
 }
 
+function FS02V2_priceGrowthFactor_(annualRate, monthNo) {
+  const rate = Number(annualRate) || 0;
+  const elapsedMonths = Math.max(0, (Number(monthNo) || 1) - 1);
+
+  if (rate <= -1) {
+    throw new Error('Tỷ lệ tăng giá/năm phải lớn hơn -100%.');
+  }
+
+  return Math.pow(1 + rate, elapsedMonths / 12);
+}
+
 function FS02V2_num_(v) {
   if (typeof v === 'number') return isFinite(v) ? v : 0;
   const s = String(v || '').replace(/\s/g, '').replace(/,/g, '').replace(/%/g, '');
@@ -687,3 +703,4 @@ function FS02_formatSheet_(sh, endRow) {
 
   sh.autoResizeColumns(1, lastCol);
 }
+
