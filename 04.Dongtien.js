@@ -61,7 +61,9 @@ function FS04_build_(taxByMonth, writeSheet) {
       closingCash = Math.max(0, cashBeforeFinancing - principalRepayment);
     }
 
-    const fcfe = closingCash - equityContribution;
+    // FCFE là dòng tiền của riêng kỳ, không phải số dư tiền lũy kế.
+    // Tiền tồn cuối kỳ vẫn chuyển nguyên sang kỳ sau để ưu tiên chi phí trước khi huy động mới.
+    const fcfe = closingCash - openingCash - equityContribution;
 
     rows.push([
       monthNo, current.date, current.year, current.quarter,
