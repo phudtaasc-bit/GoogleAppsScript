@@ -8,9 +8,8 @@ function onOpen() {
     .addSeparator()
     .addItem('6. Lập 04A. Tổng hợp dòng tiền', 'FS_lapSheet04A')
     .addItem('7. Lập 00. Tổng hợp', 'FS_lapSheet00')
-    .addItem('8. Độ nhạy dự án', 'FS05_DoNhay_Fast')
-    .addItem('9. Độ nhạy vốn CSH', 'FS05B_DoNhay_CSH')
-    .addItem('10. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
+    .addItem('8. Lập bảng độ nhạy', 'FS05_lapBangDoNhay')
+    .addItem('9. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
     .addSeparator()
     .addItem('Chạy toàn bộ mô hình', 'FS_chayToanBo')
     .addToUi();
