@@ -88,6 +88,27 @@ function FS00_capNhatChiPhiSauVat_() {
   summary.getRange('D6:D11').setFormulaR1C1('=IF(R12C3=0;0;RC[-1]/R12C3)');
   summary.getRange('D12').setValue(1);
 
+  SpreadsheetApp.flush();
+
+  const totalInvestmentBillion = FS00_num_(summary.getRange('C12').getValue());
+  const equityBillion = FS00_num_(summary.getRange('C17').getValue());
+  const loanBillion = FS00_num_(summary.getRange('C18').getValue());
+  const customerFundingBillion = totalInvestmentBillion - equityBillion - loanBillion;
+
+  if (customerFundingBillion < -0.000000001) {
+    throw new Error(
+      'Vốn CSH + vốn vay vượt Tổng nguồn vốn. Tổng nguồn vốn: ' +
+      totalInvestmentBillion.toLocaleString('vi-VN') + ' tỷ đồng; Vốn CSH + vốn vay: ' +
+      (equityBillion + loanBillion).toLocaleString('vi-VN') + ' tỷ đồng.'
+    );
+  }
+
+  summary.getRange('C19').setFormula('=C20-C17-C18');
+  summary.getRange('C20').setFormula('=C12');
+  summary.getRange('D17:D19').setFormulaR1C1('=IF(R20C3=0;0;RC[-1]/R20C3)');
+  summary.getRange('D20').setValue(1);
+  summary.getRange('E21').setFormula('=D17*E17+D18*E18+D19*E19');
+
   const totalCostRow = FS00_findSummaryRow_(summary, 'Tổng chi phí có VAT');
   const coreInvestmentRow = FS00_findSummaryRow_(summary, 'Tổng vốn đầu tư dự án');
   const sellingRow = FS00_findSummaryRow_(summary, 'Chi phí bán hàng');
@@ -117,8 +138,8 @@ function FS00_capNhatChiPhiSauVat_() {
     );
   }
 
-  summary.getRange('C6:C13').setNumberFormat('#,##0.0');
-  summary.getRange('D6:D12').setNumberFormat('0.0%');
+  summary.getRange('C6:C20').setNumberFormat('#,##0.0');
+  summary.getRange('D6:D20').setNumberFormat('0.0%');
   summary.getRange(totalCostRow, 4, maintenanceRow - totalCostRow + 1, 1)
     .setNumberFormat('#,##0.0');
 
