@@ -75,6 +75,25 @@ function FS_rate_(v) {
   const n = Number(s.replace('%', '').replace(',', '.'));
   return isFinite(n) ? (s.includes('%') || Math.abs(n) > 1 ? n / 100 : n) : 0;
 }
+function FS_rateFromText_(v) {
+  if (typeof v === 'number') return FS_rate_(v);
+  const m = String(v ?? '').match(/(-?\d+(?:[.,]\d+)?)\s*%/);
+  return m ? Number(m[1].replace(',', '.')) / 100 : FS_rate_(v);
+}
+function FS_namedRateFromText_(v, labels) {
+  if (typeof v === 'number') return FS_rate_(v);
+  const text = FS_norm_(v);
+  for (const label of labels) {
+    const k = FS_norm_(label);
+    const pos = text.indexOf(k);
+    if (pos >= 0) {
+      const tail = String(v).slice(pos);
+      const m = tail.match(/(-?\d+(?:[.,]\d+)?)\s*%/);
+      if (m) return Number(m[1].replace(',', '.')) / 100;
+    }
+  }
+  return 0;
+}
 function FS_addMonths_(d, m) { const x = new Date(d); return new Date(x.getFullYear(), x.getMonth() + m, x.getDate()); }
 function FS_sum_(values) { return values.reduce((s, v) => s + FS_num_(v), 0); }
 function FS_ratio_(a, b) { return b ? FS_num_(a) / FS_num_(b) : 0; }
