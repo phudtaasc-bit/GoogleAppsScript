@@ -108,7 +108,22 @@ function FS01A_writeProducts_(input, tech, startRow) {
   tech.getRange(startRow, 1).setValue('SAN_PHAM');
   if (!table) throw new Error('Không tìm thấy bảng D. CHI TIẾT SẢN PHẨM.');
 
-  const headers = ['Mã SP', 'Loại SP', 'Nhóm', 'DTKD', 'Giá bán', 'Giá thuê', 'CPXD', 'VAT đầu ra', 'Thuế TNDN', 'Lấp đầy', 'CPVH/doanh thu', 'Chi phí bảo trì/doanh thu', 'Thời gian thuê', 'Diện tích đất'];
+  const headers = [
+    'Mã SP',
+    'Loại sản phẩm',
+    'Nhóm',
+    'DTKD',
+    'Giá bán trước thuế/m²',
+    'Giá thuê/m²/tháng',
+    'CPXD/m²',
+    'VAT đầu ra',
+    'Thuế TNDN',
+    'Lấp đầy',
+    'CPVH/Doanh thu',
+    'CPBT/Doanh thu',
+    'Thời gian thuê (năm)',
+    'Diện tích đất (m²)'
+  ];
   const out = [headers];
 
   table.rows.forEach(row => {
@@ -121,15 +136,15 @@ function FS01A_writeProducts_(input, tech, startRow) {
       FS01A_get_(row, table.headers, ['Nhóm', 'Nhóm sản phẩm']),
       FS01A_get_(row, table.headers, ['DTKD', 'Diện tích kinh doanh']),
       FS01A_get_(row, table.headers, ['Giá bán trước thuế/m2', 'Giá bán trước thuế/m²', 'Giá bán/m2', 'Giá bán']),
-      FS01A_get_(row, table.headers, ['Giá thuê/m2/tháng', 'Giá thuê/m2/th', 'Giá thuê']),
-      FS01A_get_(row, table.headers, ['CPXD/m2', 'Chi phí XD/m2', 'Suất CPXD', 'CPXD']),
+      FS01A_get_(row, table.headers, ['Giá thuê/m2/tháng', 'Giá thuê/m²/tháng', 'Giá thuê/m2/th', 'Giá thuê']),
+      FS01A_get_(row, table.headers, ['CPXD/m2', 'CPXD/m²', 'Chi phí XD/m2', 'Suất CPXD', 'CPXD']),
       FS01A_get_(row, table.headers, ['VAT đầu ra', 'VAT']),
       FS01A_get_(row, table.headers, ['Thuế TNDN', 'TNDN']),
       FS01A_get_(row, table.headers, ['Lấp đầy', 'Lấp đầy thuê', 'Tỷ lệ lấp đầy']),
-      FS01A_get_(row, table.headers, ['CPVH/doanh thu', 'Chi phí vận hành/doanh thu', 'CPVH']),
-      FS01A_get_(row, table.headers, ['Chi phí bảo trì/doanh thu', 'CPBT/doanh thu', 'CPBT']),
+      FS01A_get_(row, table.headers, ['CPVH/doanh thu', 'CPVH/Doanh thu', 'Chi phí vận hành/doanh thu', 'CPVH']),
+      FS01A_get_(row, table.headers, ['Chi phí bảo trì/doanh thu', 'CPBT/doanh thu', 'CPBT/Doanh thu', 'CPBT']),
       FS01A_get_(row, table.headers, ['Thời gian thuê (năm)', 'Thời gian thuê', 'Số năm thuê']),
-      FS01A_get_(row, table.headers, ['Diện tích đất', 'DT đất'])
+      FS01A_get_(row, table.headers, ['Diện tích đất', 'Diện tích đất (m²)', 'DT đất'])
     ]);
   });
 
@@ -220,16 +235,25 @@ function FS01A_format_(sheet) {
   const lastCol = sheet.getLastColumn();
   if (!lastRow || !lastCol) return;
 
-  sheet.getRange(1, 1, lastRow, lastCol).setFontFamily('Arial').setFontSize(10).setVerticalAlignment('middle');
+  sheet.getRange(1, 1, lastRow, lastCol)
+    .setFontFamily('Arial')
+    .setFontSize(10)
+    .setVerticalAlignment('middle');
+
   const productRow = FS01A_findRow_(sheet, 'SAN_PHAM');
   const planRow = FS01A_findRow_(sheet, 'KE_HOACH_BAN_THU_TIEN');
   const costRow = FS01A_findRow_(sheet, 'CHI_PHI_CHUNG');
   const scheduleRow = FS01A_findRow_(sheet, 'TIEN_DO_CHI_PHI');
 
-  [1, costRow, productRow, planRow, scheduleRow].filter(Boolean).forEach(r => sheet.getRange(r, 1, 1, Math.min(lastCol, 14)).setFontWeight('bold'));
+  [1, costRow, productRow, planRow, scheduleRow]
+    .filter(Boolean)
+    .forEach(r => sheet.getRange(r, 1, 1, Math.min(lastCol, 14)).setFontWeight('bold'));
 
   if (productRow) {
-    sheet.getRange(productRow + 1, 1, 1, 14).setFontWeight('bold');
+    sheet.getRange(productRow + 1, 1, 1, 14)
+      .setFontWeight('bold')
+      .setWrap(true);
+
     const rows = planRow ? planRow - productRow - 4 : 0;
     if (rows > 0) {
       sheet.getRange(productRow + 2, 4, rows, 4).setNumberFormat('#,##0');
@@ -239,13 +263,34 @@ function FS01A_format_(sheet) {
     }
   }
 
-  sheet.autoResizeColumns(1, Math.min(lastCol, 14));
+  sheet.setColumnWidth(1, 90);
+  sheet.setColumnWidth(2, 170);
+  sheet.setColumnWidth(3, 95);
+  sheet.setColumnWidth(4, 90);
+  sheet.setColumnWidth(5, 145);
+  sheet.setColumnWidth(6, 135);
+  sheet.setColumnWidth(7, 95);
+  sheet.setColumnWidths(8, 3, 95);
+  sheet.setColumnWidth(11, 125);
+  sheet.setColumnWidth(12, 125);
+  sheet.setColumnWidth(13, 125);
+  sheet.setColumnWidth(14, 120);
 }
 
 function FS01A_norm_(value) {
-  return String(value || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/đ/g, 'd').replace(/\s+/g, ' ').trim();
+  return String(value || '')
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
 }
 
 function FS01A_key_(value) {
-  return FS01A_norm_(value).replace(/²/g, '2').replace(/\^2/g, '2').replace(/m\s*2/g, 'm2').replace(/[^a-z0-9]/g, '');
+  return FS01A_norm_(value)
+    .replace(/²/g, '2')
+    .replace(/\^2/g, '2')
+    .replace(/m\s*2/g, 'm2')
+    .replace(/[^a-z0-9]/g, '');
 }
