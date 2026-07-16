@@ -1,152 +1,434 @@
+const FS03_CFG = Object.freeze({
+  TECH: '01A. Kỹ thuật',
+  REVENUE: '02. Doanh thu',
+  COST: '03. Chi phí & Vốn'
+});
+
 function FS_lapSheet03() {
   const ss = SpreadsheetApp.getActive();
-  const tech = FS_getSheet_(ss, FS_CFG.SHEETS.TECH, FS_CFG.SHEETS.TECH_LEGACY);
-  const rev = ss.getSheetByName(FS_CFG.SHEETS.REVENUE);
-  if (!tech || !rev) throw new Error('Cần lập 01A. Kỹ thuật và 02. Doanh thu trước.');
+  const tech = ss.getSheetByName(FS03_CFG.TECH);
+  const revenueSheet = ss.getSheetByName(FS03_CFG.REVENUE);
 
-  const info = FS_readInfo_(tech);
-  const months = FS_num_(info['Số tháng mô hình']);
-  const costs = FS_costMap_(tech);
-  const sched = FS_readBlock_(tech, 'TIEN_DO_CHI_PHI').map(r => ({
-    item: String(r[0] || ''),
-    start: Math.max(1, FS_num_(r[1])),
-    duration: Math.max(1, FS_num_(r[2])),
-    rate: FS_rate_(r[3]),
-    type: String(r[4] || '')
-  }));
-  const productRows = FS_readBlock_(tech, 'SAN_PHAM');
-  const revRows = rev.getLastRow() > 1 ? rev.getRange(2, 1, rev.getLastRow() - 1, 20).getValues() : [];
-
-  const items = {
-    xd: FS_costItem_(costs, ['Chi phí XD/TB/khác', 'Chi phí xây dựng & thiết bị']),
-    gpmb: FS_costItem_(costs, ['Chi phí GPMB']),
-    landUse: FS_costItem_(costs, ['Tiền SDĐ', 'Tiền sử dụng đất']),
-    landRent: FS_costItem_(costs, ['Tiền thuê đất']),
-    htkt: FS_costItem_(costs, ['Chi phí HTKT']),
-    sell: FS_costItem_(costs, ['Chi phí bán hàng']),
-    reserve: FS_costItem_(costs, ['Chi phí dự phòng']),
-    op: FS_costItem_(costs, ['Chi phí vận hành']),
-    maint: FS_costItem_(costs, ['Chi phí bảo trì'])
-  };
-
-  const legacyLand = FS_costItem_(costs, ['Tiền SDĐ/thuê đất']);
-  if (!items.landUse.before && !items.landRent.before && legacyLand.before) {
-    throw new Error('Sheet 01A còn gộp "Tiền SDĐ/thuê đất". Hãy tách thành 2 dòng "Tiền SDĐ" và "Tiền thuê đất" trước khi lập Sheet 03.');
+  if (!tech || !revenueSheet) {
+    throw new Error('Cần lập "01A. Kỹ thuật" và "02. Doanh thu" trước.');
   }
 
-  function scheduled(itemKey, monthNo) {
-    const it = items[itemKey];
-    if (!it.before) return 0;
-    const candidates = sched.filter(x => FS_key_(x.item) === FS_key_(it.name));
-    if (!candidates.length) return 0;
-    return candidates.reduce((sum, x) => {
-      if (monthNo < x.start || monthNo >= x.start + x.duration) return sum;
-      const oneTime = FS_norm_(x.type).includes('mot lan');
-      const factor = oneTime ? (monthNo === x.start ? 1 : 0) : 1 / x.duration;
-      return sum + it.before * x.rate * factor;
-    }, 0);
-  }
+  const months = Math.max(0, FS03_num_(FS03_readInfoValue_(tech, 'Số tháng mô hình')));
+  if (!months) throw new Error('Số tháng mô hình phải lớn hơn 0.');
 
-  const productInput = {};
-  productRows.forEach(r => {
-    const name = String(r[0] || '').trim();
-    if (!name) return;
-    const code = FS_maSanPhamGoc_(name);
-    const opText = r[9];
-    const maintText = r[10];
-    productInput[code] = {
-      opRate: FS_namedRateFromText_(opText, ['CPVH', 'chi phí vận hành']) || items.op.rate,
-      maintRate: FS_rateFromText_(maintText) || items.maint.rate,
-      leaseYears: Math.max(0, FS_num_(r[11]))
-    };
-  });
+  const products = FS03_readProducts_(tech);
+  const productByCode = {};
+  products.forEach(product => { productByCode[product.code] = product; });
 
-  const productMeta = {};
-  revRows.forEach(r => {
-    const code = String(r[4] || '');
-    if (!productMeta[code]) productMeta[code] = {
-      code,
-      name: r[5],
-      type: r[6],
-      area: FS_num_(r[7]),
-      saleTotal: 0,
-      rentTotal: 0,
-      opRate: productInput[code]?.opRate || items.op.rate,
-      maintRate: productInput[code]?.maintRate || items.maint.rate,
-      leaseYears: productInput[code]?.leaseYears || 0
-    };
-    productMeta[code].saleTotal += FS_num_(r[13]);
-    productMeta[code].rentTotal += FS_num_(r[14]);
-  });
-  const products = Object.values(productMeta);
-  const totalArea = FS_sum_(products.map(p => p.area)) || 1;
-  const saleArea = FS_sum_(products.filter(p => p.type === 'Bán').map(p => p.area)) || 1;
-  const rentArea = FS_sum_(products.filter(p => p.type === 'Cho thuê').map(p => p.area)) || 1;
+  const totalArea = products.reduce((sum, product) => sum + product.area, 0);
+  if (totalArea <= 0) throw new Error('Tổng DTKD của danh mục sản phẩm phải lớn hơn 0.');
 
+  const costMap = FS03_readCostMap_(tech);
+  const schedules = FS03_readSchedules_(tech);
+  const revenueRows = FS03_readRevenueRows_(revenueSheet, productByCode);
+
+  const costItems = FS03_buildCostItems_(costMap);
+  FS03_validateLandCostStructure_(costMap);
+
+  const scheduledByItemMonth = FS03_indexScheduledCosts_(costItems, schedules, months);
+  const revenueByCodeMonth = FS03_indexRevenue_(revenueRows);
   const rows = [];
-  for (let t = 1; t <= months; t++) {
-    const monthRows = revRows.filter(r => FS_num_(r[0]) === t);
-    const xdMonth = scheduled('xd', t);
-    const gpmbMonth = scheduled('gpmb', t);
-    const landUseMonth = scheduled('landUse', t);
-    const landRentMonth = scheduled('landRent', t);
-    const htktMonth = scheduled('htkt', t);
-    const reserveMonth = (xdMonth + htktMonth) * items.reserve.rate;
 
-    monthRows.forEach(r => {
-      const code = String(r[4] || '');
-      const meta = productMeta[code];
-      const areaShare = FS_ratio_(meta.area, totalArea);
-      const saleShare = meta.type === 'Bán' ? FS_ratio_(meta.area, saleArea) : 0;
-      const rentShare = meta.type === 'Cho thuê' ? FS_ratio_(meta.area, rentArea) : 0;
-      const saleRevenue = FS_num_(r[13]);
-      const rentRevenue = FS_num_(r[14]);
+  for (let monthNo = 1; monthNo <= months; monthNo++) {
+    products.forEach(product => {
+      const key = product.code + '|' + monthNo;
+      const revenue = revenueByCodeMonth[key] || FS03_emptyRevenue_(monthNo, product);
+      const areaShare = product.area / totalArea;
 
-      const xd = xdMonth * areaShare;
-      const gpmb = gpmbMonth * areaShare;
-      const landUse = landUseMonth * saleShare;
-      const landRent = landRentMonth * rentShare;
-      const htkt = htktMonth * areaShare;
-      const sell = meta.type === 'Bán' ? saleRevenue * items.sell.rate : 0;
-      const op = meta.type === 'Cho thuê' ? rentRevenue * meta.opRate : 0;
-      const maint = meta.type === 'Cho thuê' ? rentRevenue * meta.maintRate : 0;
-      const reserve = reserveMonth * areaShare;
+      const construction = FS03_scheduled_(scheduledByItemMonth, 'construction', monthNo) * areaShare;
+      const clearance = FS03_scheduled_(scheduledByItemMonth, 'clearance', monthNo) * areaShare;
+      const infrastructure = FS03_scheduled_(scheduledByItemMonth, 'infrastructure', monthNo) * areaShare;
 
-      const vatIn =
-        xd * items.xd.vat + gpmb * items.gpmb.vat + landUse * items.landUse.vat +
-        landRent * items.landRent.vat + htkt * items.htkt.vat + sell * items.sell.vat +
-        op * items.op.vat + maint * items.maint.vat + reserve * items.reserve.vat;
-      const totalBefore = xd + gpmb + landUse + landRent + htkt + sell + op + maint + reserve;
+      const landUse = product.code === 'LK'
+        ? FS03_scheduled_(scheduledByItemMonth, 'landUseLK', monthNo)
+        : 0;
+
+      const landRent = FS03_landRentForProduct_(product.code, scheduledByItemMonth, monthNo);
+      const selling = product.group === 'Bán'
+        ? revenue.saleRevenue * costItems.selling.rate
+        : 0;
+      const operating = product.group === 'Cho thuê'
+        ? revenue.rentRevenue * product.operatingRate
+        : 0;
+      const maintenance = product.group === 'Cho thuê'
+        ? revenue.rentRevenue * product.maintenanceRate
+        : 0;
+      const contingency = (construction + infrastructure) * costItems.contingency.rate;
+
+      const totalBeforeVat =
+        construction + clearance + infrastructure + landUse + landRent +
+        selling + operating + maintenance + contingency;
+
+      const vatInput =
+        construction * costItems.construction.vatRate +
+        clearance * costItems.clearance.vatRate +
+        infrastructure * costItems.infrastructure.vatRate +
+        landUse * costItems.landUseLK.vatRate +
+        landRent * FS03_landRentVatRate_(product.code, costItems) +
+        selling * costItems.selling.vatRate +
+        operating * FS03_productVatRate_(costMap, 'Chi phí vận hành') +
+        maintenance * FS03_productVatRate_(costMap, 'Chi phí bảo trì') +
+        contingency * costItems.contingency.vatRate;
 
       rows.push([
-        r[0], r[1], r[2], r[3], code, r[5], r[6], r[18], r[17],
-        xd, gpmb, landUse, landRent, htkt, sell, op, maint, reserve,
-        totalBefore, vatIn, totalBefore + vatIn
+        monthNo,
+        revenue.date,
+        revenue.year,
+        revenue.quarter,
+        product.code,
+        product.name,
+        product.group,
+        product.area,
+        revenue.customerCash,
+        revenue.vatOut,
+        construction,
+        clearance,
+        infrastructure,
+        landUse,
+        landRent,
+        selling,
+        operating,
+        maintenance,
+        contingency,
+        totalBeforeVat,
+        vatInput,
+        totalBeforeVat + vatInput
       ]);
     });
   }
 
-  const sh = FS_getOrCreateSheet_(ss, FS_CFG.SHEETS.COST);
-  FS_resetSheet_(sh, rows.length + 1, 21);
-  sh.getRange(1, 1, 1, 21).setValues([[
-    'Tháng số', 'Tháng', 'Năm', 'Quý', 'Mã SP', 'Tên sản phẩm', 'Loại hình',
-    'Dòng tiền thu khách hàng', 'VAT đầu ra', 'XD/TB trước VAT', 'GPMB trước VAT',
-    'Tiền SDĐ trước VAT', 'Tiền thuê đất trước VAT', 'HTKT trước VAT',
+  let sheet = ss.getSheetByName(FS03_CFG.COST);
+  if (!sheet) sheet = ss.insertSheet(FS03_CFG.COST);
+  sheet.clear();
+  sheet.clearFormats();
+
+  const headers = [[
+    'Tháng số', 'Tháng', 'Năm', 'Quý', 'Mã SP', 'Tên sản phẩm', 'Nhóm', 'DTKD (m²)',
+    'Dòng tiền khách hàng', 'VAT đầu ra',
+    'XD/TB trước VAT', 'GPMB trước VAT', 'HTKT trước VAT',
+    'Tiền SDĐ trước VAT', 'Tiền thuê đất trước VAT',
     'Chi phí bán hàng trước VAT', 'Chi phí vận hành trước VAT',
     'Chi phí bảo trì trước VAT', 'Chi phí dự phòng trước VAT',
     'Tổng chi trước VAT', 'VAT đầu vào', 'Tổng chi sau VAT'
-  ]]);
-  if (rows.length) sh.getRange(2, 1, rows.length, 21).setValues(rows);
-  FS03_format_(sh, rows.length + 1);
+  ]];
+
+  sheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+  if (rows.length) sheet.getRange(2, 1, rows.length, headers[0].length).setValues(rows);
+  FS03_format_(sheet, rows.length + 1, headers[0].length);
 }
 
-function FS03_format_(sh, endRow) {
-  sh.setFrozenRows(1);
-  sh.setFrozenColumns(7);
-  sh.getRange(1, 1, 1, 21).setFontWeight('bold').setBackground('#fce4d6').setWrap(true);
-  if (endRow > 1) {
-    sh.getRange(2, 2, endRow - 1, 1).setNumberFormat('MM/yyyy');
-    sh.getRange(2, 8, endRow - 1, 14).setNumberFormat('#,##0');
+function FS03_readProducts_(sheet) {
+  const rows = FS03_readBlock_(sheet, 'SAN_PHAM');
+  const products = rows.map(row => ({
+    code: String(row[0] || '').trim().toUpperCase(),
+    name: String(row[1] || '').trim(),
+    group: FS03_group_(row[2]),
+    area: FS03_num_(row[3]),
+    operatingRate: FS03_rate_(row[10]),
+    maintenanceRate: FS03_rate_(row[11])
+  })).filter(product => product.code || product.name);
+
+  if (!products.length) throw new Error('Block SAN_PHAM không có dữ liệu sản phẩm.');
+  if (products.some(product => !product.code)) throw new Error('Block SAN_PHAM còn thiếu Mã SP.');
+
+  const codes = products.map(product => product.code);
+  const duplicated = [...new Set(codes.filter((code, index) => codes.indexOf(code) !== index))];
+  if (duplicated.length) throw new Error('Mã SP bị trùng trong SAN_PHAM: ' + duplicated.join(', '));
+
+  const invalid = products.filter(product => !['Bán', 'Cho thuê'].includes(product.group));
+  if (invalid.length) {
+    throw new Error('Nhóm sản phẩm không hợp lệ: ' + invalid.map(product => product.code + ': ' + product.group).join('; '));
   }
-  sh.autoResizeColumns(1, 21);
+
+  return products;
+}
+
+function FS03_readCostMap_(sheet) {
+  const rows = FS03_readBlock_(sheet, 'CHI_PHI_CHUNG');
+  const map = {};
+
+  rows.forEach(row => {
+    const name = String(row[0] || '').trim();
+    if (!name) return;
+    map[FS03_key_(name)] = {
+      name,
+      beforeVat: FS03_num_(row[1]),
+      vatRate: FS03_rate_(row[2]),
+      afterVat: FS03_num_(row[3]),
+      note: String(row[4] || '').trim(),
+      rate: FS03_rate_(row[5])
+    };
+  });
+
+  return map;
+}
+
+function FS03_readSchedules_(sheet) {
+  return FS03_readBlock_(sheet, 'TIEN_DO_CHI_PHI')
+    .map(row => ({
+      item: String(row[0] || '').trim(),
+      start: Math.max(1, FS03_num_(row[1])),
+      duration: Math.max(1, FS03_num_(row[2])),
+      rate: FS03_rate_(row[3]),
+      type: String(row[4] || '').trim()
+    }))
+    .filter(schedule => schedule.item && schedule.rate !== 0);
+}
+
+function FS03_readRevenueRows_(sheet, productByCode) {
+  if (sheet.getLastRow() <= 1) return [];
+
+  const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
+  const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
+  const index = FS03_headerIndex_(headers);
+
+  const required = [
+    'thangso', 'thang', 'nam', 'quy', 'masp',
+    'doanhthubntruocvat', 'doanhthuthuetruocvat',
+    'vatdaura', 'dongtienkhachhang'
+  ];
+  const missing = required.filter(key => index[key] == null);
+  if (missing.length) throw new Error('Sheet 02 thiếu cột bắt buộc: ' + missing.join(', '));
+
+  return values.map(row => {
+    const code = String(row[index.masp] || '').trim().toUpperCase();
+    if (!productByCode[code]) throw new Error('Sheet 02 có Mã SP không tồn tại trong SAN_PHAM: ' + code);
+
+    return {
+      monthNo: FS03_num_(row[index.thangso]),
+      date: row[index.thang],
+      year: FS03_num_(row[index.nam]),
+      quarter: row[index.quy],
+      code,
+      saleRevenue: FS03_num_(row[index.doanhthubntruocvat]),
+      rentRevenue: FS03_num_(row[index.doanhthuthuetruocvat]),
+      vatOut: FS03_num_(row[index.vatdaura]),
+      customerCash: FS03_num_(row[index.dongtienkhachhang])
+    };
+  });
+}
+
+function FS03_headerIndex_(headers) {
+  const index = {};
+  headers.forEach((header, position) => { index[FS03_key_(header)] = position; });
+  return index;
+}
+
+function FS03_buildCostItems_(costMap) {
+  return {
+    construction: FS03_cost_(costMap, ['Chi phí XD/TB/khác', 'Chi phí xây dựng & thiết bị', 'Chi phí XD/TB']),
+    clearance: FS03_cost_(costMap, ['Chi phí GPMB']),
+    infrastructure: FS03_cost_(costMap, ['Chi phí HTKT']),
+    landUseLK: FS03_cost_(costMap, ['Tiền SDĐ Liền kề', 'Tiền SDD Liền kề']),
+    landRentCC: FS03_cost_(costMap, ['Tiền thuê đất Chung cư']),
+    landRentTMDV: FS03_cost_(costMap, ['Tiền thuê đất TMDV']),
+    landRentCHO: FS03_cost_(costMap, ['Tiền thuê đất Chợ']),
+    selling: FS03_cost_(costMap, ['Chi phí bán hàng']),
+    contingency: FS03_cost_(costMap, ['Chi phí dự phòng'])
+  };
+}
+
+function FS03_cost_(costMap, aliases) {
+  for (const alias of aliases) {
+    const item = costMap[FS03_key_(alias)];
+    if (item) return item;
+  }
+  return { name: aliases[0], beforeVat: 0, vatRate: 0, afterVat: 0, note: '', rate: 0 };
+}
+
+function FS03_validateLandCostStructure_(costMap) {
+  const legacyKeys = ['Tiền SDĐ/Thuê đất', 'Tiền SDĐ/thuê đất', 'Tiền sử dụng đất/thuê đất'];
+  const legacy = legacyKeys.some(name => costMap[FS03_key_(name)] && costMap[FS03_key_(name)].beforeVat !== 0);
+  if (legacy) {
+    throw new Error('CHI_PHI_CHUNG còn khoản mục tiền đất gộp. Phải tách theo từng sản phẩm trước khi lập Sheet 03.');
+  }
+}
+
+function FS03_indexScheduledCosts_(items, schedules, months) {
+  const index = {};
+
+  Object.keys(items).forEach(itemKey => {
+    const item = items[itemKey];
+    if (!item.beforeVat) return;
+
+    const matched = schedules.filter(schedule => FS03_key_(schedule.item) === FS03_key_(item.name));
+    matched.forEach(schedule => {
+      const isOneTime = FS03_norm_(schedule.type).includes('mot lan');
+      const end = Math.min(months, schedule.start + schedule.duration - 1);
+
+      if (isOneTime) {
+        const key = itemKey + '|' + schedule.start;
+        index[key] = (index[key] || 0) + item.beforeVat * schedule.rate;
+        return;
+      }
+
+      for (let monthNo = schedule.start; monthNo <= end; monthNo++) {
+        const key = itemKey + '|' + monthNo;
+        index[key] = (index[key] || 0) + item.beforeVat * schedule.rate / schedule.duration;
+      }
+    });
+  });
+
+  return index;
+}
+
+function FS03_indexRevenue_(rows) {
+  const index = {};
+  rows.forEach(row => {
+    const key = row.code + '|' + row.monthNo;
+    if (index[key]) throw new Error('Sheet 02 bị trùng khóa Mã SP + Tháng số: ' + key);
+    index[key] = row;
+  });
+  return index;
+}
+
+function FS03_scheduled_(index, itemKey, monthNo) {
+  return index[itemKey + '|' + monthNo] || 0;
+}
+
+function FS03_landRentForProduct_(code, index, monthNo) {
+  if (code === 'CC') return FS03_scheduled_(index, 'landRentCC', monthNo);
+  if (code === 'TMDV') return FS03_scheduled_(index, 'landRentTMDV', monthNo);
+  if (code === 'CHO') return FS03_scheduled_(index, 'landRentCHO', monthNo);
+  return 0;
+}
+
+function FS03_landRentVatRate_(code, items) {
+  if (code === 'CC') return items.landRentCC.vatRate;
+  if (code === 'TMDV') return items.landRentTMDV.vatRate;
+  if (code === 'CHO') return items.landRentCHO.vatRate;
+  return 0;
+}
+
+function FS03_productVatRate_(costMap, name) {
+  const item = costMap[FS03_key_(name)];
+  return item ? item.vatRate : 0;
+}
+
+function FS03_emptyRevenue_(monthNo, product) {
+  return {
+    monthNo,
+    date: '',
+    year: '',
+    quarter: '',
+    code: product.code,
+    saleRevenue: 0,
+    rentRevenue: 0,
+    vatOut: 0,
+    customerCash: 0
+  };
+}
+
+function FS03_readInfoValue_(sheet, label) {
+  const target = FS03_key_(label);
+  const values = sheet.getDataRange().getValues();
+  for (let row = 0; row < values.length; row++) {
+    if (FS03_key_(values[row][0]) === target) return values[row][1];
+  }
+  return '';
+}
+
+function FS03_readBlock_(sheet, marker) {
+  const values = sheet.getDataRange().getValues();
+  const target = FS03_key_(marker);
+  let markerRow = -1;
+
+  for (let row = 0; row < values.length; row++) {
+    if (FS03_key_(values[row][0]) === target) {
+      markerRow = row;
+      break;
+    }
+  }
+
+  if (markerRow < 0) throw new Error('Không tìm thấy block ' + marker + '.');
+  const headerRow = markerRow + 1;
+  const rows = [];
+  let blanks = 0;
+
+  for (let row = headerRow + 1; row < values.length; row++) {
+    const current = values[row];
+    const first = String(current[0] || '').trim();
+    const hasData = current.some(value => String(value == null ? '' : value).trim() !== '');
+    const nextBlock = /^[A-Z0-9_]+$/.test(first) && first.includes('_');
+
+    if (nextBlock) break;
+    if (!hasData) {
+      if (++blanks >= 2) break;
+      continue;
+    }
+
+    blanks = 0;
+    rows.push(current);
+  }
+
+  return rows;
+}
+
+function FS03_group_(value) {
+  const key = FS03_key_(value);
+  if (key === 'ban') return 'Bán';
+  if (key === 'chothue') return 'Cho thuê';
+  return String(value || '').trim();
+}
+
+function FS03_num_(value) {
+  if (typeof value === 'number') return isFinite(value) ? value : 0;
+  const text = String(value == null ? '' : value).trim().replace(/\s/g, '');
+  if (!text) return 0;
+  const normalized = text.includes(',') && text.includes('.')
+    ? text.replace(/\./g, '').replace(',', '.')
+    : text.replace(/,/g, '');
+  const number = Number(normalized);
+  return isFinite(number) ? number : 0;
+}
+
+function FS03_rate_(value) {
+  if (typeof value === 'number') return value > 1 ? value / 100 : value;
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return 0;
+  const number = FS03_num_(text.replace('%', ''));
+  return text.includes('%') || number > 1 ? number / 100 : number;
+}
+
+function FS03_norm_(value) {
+  return String(value == null ? '' : value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function FS03_key_(value) {
+  return FS03_norm_(value)
+    .replace(/²/g, '2')
+    .replace(/\^2/g, '2')
+    .replace(/m\s*2/g, 'm2')
+    .replace(/[^a-z0-9]/g, '');
+}
+
+function FS03_format_(sheet, endRow, columnCount) {
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(7);
+  sheet.getRange(1, 1, 1, columnCount)
+    .setFontWeight('bold')
+    .setBackground('#fce4d6')
+    .setWrap(true)
+    .setVerticalAlignment('middle');
+
+  if (endRow > 1) {
+    const rowCount = endRow - 1;
+    sheet.getRange(2, 2, rowCount, 1).setNumberFormat('MM/yyyy');
+    sheet.getRange(2, 8, rowCount, 15).setNumberFormat('#,##0');
+  }
+
+  const widths = [70, 85, 65, 90, 70, 180, 90, 95, 145, 105, 125, 115, 115, 125, 135, 145, 150, 145, 145, 135, 115, 135];
+  widths.forEach((width, index) => sheet.setColumnWidth(index + 1, width));
+  sheet.setRowHeight(1, 44);
 }
