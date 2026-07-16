@@ -25,5 +25,6 @@ function FS_lapSheet04A() {
   if (rows.length) sh.getRange(2, 1, rows.length, 21).setValues(rows);
   sh.setFrozenRows(1);
   sh.getRange(1, 1, 1, 21).setFontWeight('bold').setBackground('#fff2cc').setWrap(true);
+  if (rows.length) sh.getRange(2, 2, rows.length, 20).setNumberFormat('#,##0');
   sh.autoResizeColumns(1, 21);
 }
