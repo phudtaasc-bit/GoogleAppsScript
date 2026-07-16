@@ -1,125 +1,317 @@
-function FS_lapSheet04() { return FS_hoiTuTaiTro(); }
+const FS04_CFG = Object.freeze({
+  TECH: '01A. Kỹ thuật',
+  COST: '03. Chi phí & Vốn',
+  PROFIT: '03A. Lợi nhuận & Thuế',
+  CASH: '04. Dòng tiền & Tài trợ',
+  CASH_LEGACY: '04. Dòng tiền'
+});
+
+function FS_lapSheet04() {
+  return FS04_buildAndWrite_();
+}
 
 function FS_hoiTuTaiTro() {
+  return FS04_buildAndWrite_();
+}
+
+function FS04_buildAndWrite_() {
   const ss = SpreadsheetApp.getActive();
-  const tech = FS_getSheet_(ss, FS_CFG.SHEETS.TECH, FS_CFG.SHEETS.TECH_LEGACY);
-  const cost = ss.getSheetByName(FS_CFG.SHEETS.COST);
-  if (!tech || !cost) throw new Error('Cần lập 01A. Kỹ thuật và 03. Chi phí & Vốn.');
+  const tech = ss.getSheetByName(FS04_CFG.TECH);
+  const costSheet = ss.getSheetByName(FS04_CFG.COST);
+  const profitSheet = ss.getSheetByName(FS04_CFG.PROFIT);
 
-  const info = FS_readInfo_(tech);
-  const months = FS_num_(info['Số tháng mô hình']);
-  const loanRatio = FS_rate_(info['Tỷ lệ vốn vay']);
-  const monthlyRate = Math.pow(1 + FS_rate_(info['Lãi suất vay năm']), 1 / 12) - 1;
-
-  let interest = Array(months).fill(0);
-  let result = null;
-  let converged = false;
-
-  for (let iter = 1; iter <= FS_CFG.CONVERGENCE.maxIterations; iter++) {
-    FS_lapSheet03A_voiLaiVay_(interest);
-    SpreadsheetApp.flush();
-    result = FS04_build_(months, loanRatio, monthlyRate);
-    const next = result.map(r => FS_num_(r[16]));
-    const diff = Math.max.apply(null, next.map((v, i) => Math.abs(v - interest[i])));
-    interest = next;
-
-    if (diff <= FS_CFG.CONVERGENCE.tolerance) {
-      converged = true;
-      PropertiesService.getDocumentProperties().setProperty('FS_CONVERGENCE', JSON.stringify({
-        converged: true, iterations: iter, maxDiff: diff, time: new Date().toISOString()
-      }));
-      break;
-    }
+  if (!tech || !costSheet || !profitSheet) {
+    throw new Error('Cần lập "01A. Kỹ thuật", "03. Chi phí & Vốn" và "03A. Lợi nhuận & Thuế" trước.');
   }
 
-  if (!converged) throw new Error('Không hội tụ sau ' + FS_CFG.CONVERGENCE.maxIterations + ' vòng.');
-  FS_lapSheet03A_voiLaiVay_(interest);
-  FS04_write_(result);
+  const months = Math.max(0, FS04_num_(FS04_readInfoValue_(tech, 'Số tháng mô hình')));
+  const loanRatio = FS04_rate_(FS04_readInfoValue_(tech, 'Tỷ lệ vốn vay'));
+  const annualInterestRate = FS04_rate_(FS04_readInfoValue_(tech, 'Lãi suất vay năm'));
+  const repaymentStart = Math.max(1, FS04_num_(FS04_readInfoValue_(tech, 'Tháng bắt đầu trả gốc')) || 1);
+  const repaymentDuration = Math.max(1, FS04_num_(FS04_readInfoValue_(tech, 'Thời gian trả gốc')) || 1);
+
+  if (!months) throw new Error('Số tháng mô hình phải lớn hơn 0.');
+  if (loanRatio < 0 || loanRatio > 1) throw new Error('Tỷ lệ vốn vay phải nằm trong khoảng 0% đến 100%.');
+  if (annualInterestRate < 0) throw new Error('Lãi suất vay năm không được âm.');
+
+  const monthlyInterestRate = Math.pow(1 + annualInterestRate, 1 / 12) - 1;
+  const costByMonth = FS04_readCostByMonth_(costSheet, months);
+  const taxByMonth = FS04_readTaxByMonth_(profitSheet, months);
+  const rows = [];
+
+  let openingCash = 0;
+  let openingDebt = 0;
+  let openingVatCredit = 0;
+
+  for (let monthNo = 1; monthNo <= months; monthNo++) {
+    const cost = costByMonth[monthNo] || FS04_emptyCostMonth_(monthNo);
+    const corporateIncomeTax = taxByMonth[monthNo] || 0;
+
+    const vatPayable = Math.max(0, cost.vatOut - openingVatCredit - cost.vatIn);
+    const closingVatCredit = Math.max(0, openingVatCredit + cost.vatIn - cost.vatOut);
+
+    const fcff = cost.customerCash - cost.costAfterVat - vatPayable - corporateIncomeTax;
+    const interestExpense = openingDebt * monthlyInterestRate;
+    const cashBeforeFinancing = openingCash + fcff - interestExpense;
+
+    let equityContribution = 0;
+    let loanDrawdown = 0;
+    let principalRepayment = 0;
+    let fundingNeed = 0;
+    let closingCash = 0;
+    let closingDebt = openingDebt;
+
+    if (cashBeforeFinancing < 0) {
+      fundingNeed = -cashBeforeFinancing;
+      loanDrawdown = fundingNeed * loanRatio;
+      equityContribution = fundingNeed - loanDrawdown;
+      closingDebt = openingDebt + loanDrawdown;
+      closingCash = 0;
+    } else {
+      const isRepaymentPeriod = monthNo >= repaymentStart && monthNo < repaymentStart + repaymentDuration;
+      const remainingRepaymentMonths = Math.max(1, repaymentStart + repaymentDuration - monthNo);
+      const scheduledPrincipal = isRepaymentPeriod ? openingDebt / remainingRepaymentMonths : 0;
+
+      principalRepayment = Math.min(openingDebt, scheduledPrincipal, cashBeforeFinancing);
+      closingDebt = Math.max(0, openingDebt - principalRepayment);
+      closingCash = Math.max(0, cashBeforeFinancing - principalRepayment);
+    }
+
+    const fcfe = fcff - interestExpense + loanDrawdown - principalRepayment;
+
+    rows.push([
+      monthNo,
+      cost.date,
+      cost.year,
+      cost.quarter,
+      cost.customerCash,
+      cost.vatOut,
+      cost.costBeforeVat,
+      cost.vatIn,
+      cost.costAfterVat,
+      openingVatCredit,
+      vatPayable,
+      closingVatCredit,
+      corporateIncomeTax,
+      fcff,
+      openingCash,
+      cashBeforeFinancing,
+      fundingNeed,
+      interestExpense,
+      equityContribution,
+      loanDrawdown,
+      principalRepayment,
+      openingDebt,
+      closingDebt,
+      closingCash,
+      fcfe
+    ]);
+
+    openingCash = closingCash;
+    openingDebt = closingDebt;
+    openingVatCredit = closingVatCredit;
+  }
+
+  FS04_write_(ss, rows);
+  FS04_writeStatus_(rows, monthlyInterestRate, repaymentStart, repaymentDuration);
+  return rows;
+}
+
+function FS04_readCostByMonth_(sheet, months) {
+  const table = FS04_readTable_(sheet);
+  const required = [
+    'thangso', 'thang', 'nam', 'quy',
+    'dongtienkhachhang', 'vatdaura',
+    'tongchitruocvat', 'vatdauvao', 'tongchusauvat'
+  ];
+  FS04_requireHeaders_(table.index, required, '03. Chi phí & Vốn');
+
+  const result = {};
+  for (let monthNo = 1; monthNo <= months; monthNo++) result[monthNo] = FS04_emptyCostMonth_(monthNo);
+
+  table.values.forEach(row => {
+    const monthNo = FS04_num_(row[table.index.thangso]);
+    if (monthNo < 1 || monthNo > months) return;
+
+    const item = result[monthNo];
+    const date = row[table.index.thang];
+    if (!item.date && date) item.date = date;
+    if (!item.year) item.year = row[table.index.nam];
+    if (!item.quarter) item.quarter = row[table.index.quy];
+
+    item.customerCash += FS04_num_(row[table.index.dongtienkhachhang]);
+    item.vatOut += FS04_num_(row[table.index.vatdaura]);
+    item.costBeforeVat += FS04_num_(row[table.index.tongchitruocvat]);
+    item.vatIn += FS04_num_(row[table.index.vatdauvao]);
+    item.costAfterVat += FS04_num_(row[table.index.tongchusauvat]);
+  });
+
   return result;
 }
 
-function FS04_build_(months, loanRatio, monthlyRate) {
-  const ss = SpreadsheetApp.getActive();
-  const cost = ss.getSheetByName(FS_CFG.SHEETS.COST);
-  const profit = ss.getSheetByName(FS_CFG.SHEETS.PROFIT);
-  const cRows = cost.getLastRow() > 1 ? cost.getRange(2, 1, cost.getLastRow() - 1, 21).getValues() : [];
-  const pRows = profit.getLastRow() > 1 ? profit.getRange(2, 1, profit.getLastRow() - 1, 21).getValues() : [];
+function FS04_readTaxByMonth_(sheet, months) {
+  const table = FS04_readTable_(sheet);
+  FS04_requireHeaders_(table.index, ['thangso', 'thuetndn'], '03A. Lợi nhuận & Thuế');
 
-  const cBy = Array.from({ length: months }, () => ({ cash: 0, vatOut: 0, costBefore: 0, vatIn: 0, costAfter: 0 }));
-  cRows.forEach(r => {
-    const i = FS_num_(r[0]) - 1;
-    if (i < 0 || i >= months) return;
-    cBy[i].cash += FS_num_(r[7]);
-    cBy[i].vatOut += FS_num_(r[8]);
-    cBy[i].costBefore += FS_num_(r[18]);
-    cBy[i].vatIn += FS_num_(r[19]);
-    cBy[i].costAfter += FS_num_(r[20]);
+  const result = {};
+  for (let monthNo = 1; monthNo <= months; monthNo++) result[monthNo] = 0;
+
+  table.values.forEach(row => {
+    const monthNo = FS04_num_(row[table.index.thangso]);
+    if (monthNo < 1 || monthNo > months) return;
+    result[monthNo] += FS04_num_(row[table.index.thuetndn]);
   });
 
-  const taxBy = Array(months).fill(0);
-  const patBy = Array(months).fill(0);
-  pRows.forEach(r => {
-    const i = FS_num_(r[0]) - 1;
-    if (i < 0 || i >= months) return;
-    taxBy[i] += FS_num_(r[19]);
-    patBy[i] += FS_num_(r[20]);
-  });
-
-  let cash = 0;
-  let debt = 0;
-  let vatCredit = 0;
-  const out = [];
-
-  for (let i = 0; i < months; i++) {
-    const x = cBy[i];
-    const vatPay = Math.max(0, x.vatOut - vatCredit - x.vatIn);
-    const vatCreditEnd = Math.max(0, vatCredit + x.vatIn - x.vatOut);
-    const tax = taxBy[i];
-    const operating = x.cash - x.costAfter - vatPay - tax;
-    const interest = debt * monthlyRate;
-    const need = Math.max(0, -(cash + operating - interest));
-    const equity = need * (1 - loanRatio);
-    const draw = need * loanRatio;
-    const available = cash + operating - interest + equity + draw;
-    const repay = Math.min(debt + draw + interest, Math.max(0, available));
-    const debtEnd = Math.max(0, debt + draw + interest - repay);
-    const cashEnd = Math.max(0, available - repay);
-    const fcff = operating;
-    const fcfe = fcff + draw - repay;
-    const date = cRows.find(r => FS_num_(r[0]) === i + 1)?.[1] || '';
-    const year = date instanceof Date ? date.getFullYear() : '';
-    const quarter = date instanceof Date ? 'Q' + Math.ceil((date.getMonth() + 1) / 3) + '/' + year : '';
-
-    out.push([
-      i + 1, date, year, quarter, x.cash, x.vatOut, x.costBefore, x.vatIn, x.costAfter,
-      vatCredit, vatPay, vatCreditEnd, tax, patBy[i], operating, need,
-      interest, equity, draw, repay, debtEnd, cashEnd, fcff, fcfe
-    ]);
-    cash = cashEnd;
-    debt = debtEnd;
-    vatCredit = vatCreditEnd;
-  }
-  return out;
+  return result;
 }
 
-function FS04_write_(rows) {
-  const ss = SpreadsheetApp.getActive();
-  const sh = FS_getOrCreateSheet_(ss, FS_CFG.SHEETS.CASH, FS_CFG.SHEETS.CASH_LEGACY);
-  FS_resetSheet_(sh, rows.length + 1, 24);
-  sh.getRange(1, 1, 1, 24).setValues([[
-    'Tháng số', 'Tháng', 'Năm', 'Quý', 'Dòng tiền thu khách hàng', 'VAT đầu ra',
-    'Tổng chi trước VAT', 'VAT đầu vào', 'Tổng chi sau VAT', 'VAT khấu trừ đầu kỳ',
-    'VAT phải nộp', 'VAT khấu trừ cuối kỳ', 'Thuế TNDN', 'LNST',
-    'Dòng tiền trước tài trợ', 'Nhu cầu vốn', 'Lãi vay', 'Vốn góp CSH',
-    'Giải ngân vay', 'Trả gốc', 'Dư nợ cuối kỳ', 'Tiền cuối kỳ', 'FCFF', 'FCFE'
-  ]]);
-  if (rows.length) sh.getRange(2, 1, rows.length, 24).setValues(rows);
-  sh.setFrozenRows(1);
-  sh.setFrozenColumns(4);
-  sh.getRange(1, 1, 1, 24).setFontWeight('bold').setBackground('#ddebf7').setWrap(true);
-  if (rows.length) {
-    sh.getRange(2, 2, rows.length, 1).setNumberFormat('MM/yyyy');
-    sh.getRange(2, 5, rows.length, 20).setNumberFormat('#,##0');
+function FS04_readTable_(sheet) {
+  if (sheet.getLastRow() < 1) throw new Error('Sheet "' + sheet.getName() + '" không có dữ liệu.');
+
+  const columnCount = sheet.getLastColumn();
+  const headers = sheet.getRange(1, 1, 1, columnCount).getDisplayValues()[0];
+  const values = sheet.getLastRow() > 1
+    ? sheet.getRange(2, 1, sheet.getLastRow() - 1, columnCount).getValues()
+    : [];
+  const index = {};
+
+  headers.forEach((header, position) => {
+    index[FS04_key_(header)] = position;
+  });
+
+  return { headers, values, index };
+}
+
+function FS04_requireHeaders_(index, required, sheetName) {
+  const missing = required.filter(key => index[key] == null);
+  if (missing.length) {
+    throw new Error('Sheet "' + sheetName + '" thiếu cột bắt buộc: ' + missing.join(', '));
   }
-  sh.autoResizeColumns(1, 24);
+}
+
+function FS04_emptyCostMonth_(monthNo) {
+  return {
+    monthNo,
+    date: '',
+    year: '',
+    quarter: '',
+    customerCash: 0,
+    vatOut: 0,
+    costBeforeVat: 0,
+    vatIn: 0,
+    costAfterVat: 0
+  };
+}
+
+function FS04_write_(ss, rows) {
+  let sheet = ss.getSheetByName(FS04_CFG.CASH);
+  const legacy = ss.getSheetByName(FS04_CFG.CASH_LEGACY);
+
+  if (!sheet && legacy) {
+    legacy.setName(FS04_CFG.CASH);
+    sheet = legacy;
+  }
+  if (!sheet) sheet = ss.insertSheet(FS04_CFG.CASH);
+
+  sheet.clear();
+  sheet.clearFormats();
+
+  const headers = [[
+    'Tháng số', 'Tháng', 'Năm', 'Quý',
+    'Dòng tiền khách hàng', 'VAT đầu ra',
+    'Tổng chi trước VAT', 'VAT đầu vào', 'Tổng chi sau VAT',
+    'VAT khấu trừ đầu kỳ', 'VAT phải nộp', 'VAT khấu trừ cuối kỳ',
+    'Thuế TNDN', 'FCFF',
+    'Tiền đầu kỳ', 'Tiền trước tài trợ', 'Nhu cầu vốn',
+    'Lãi vay', 'Vốn góp CSH', 'Giải ngân vay', 'Trả gốc',
+    'Dư nợ đầu kỳ', 'Dư nợ cuối kỳ', 'Tiền cuối kỳ', 'FCFE'
+  ]];
+
+  sheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
+  if (rows.length) sheet.getRange(2, 1, rows.length, headers[0].length).setValues(rows);
+
+  sheet.setFrozenRows(1);
+  sheet.setFrozenColumns(4);
+  sheet.getRange(1, 1, 1, headers[0].length)
+    .setFontWeight('bold')
+    .setBackground('#ddebf7')
+    .setWrap(true)
+    .setVerticalAlignment('middle');
+
+  if (rows.length) {
+    sheet.getRange(2, 2, rows.length, 1).setNumberFormat('MM/yyyy');
+    sheet.getRange(2, 5, rows.length, headers[0].length - 4).setNumberFormat('#,##0');
+  }
+
+  const widths = [70, 85, 65, 90, 145, 105, 135, 105, 135, 120, 110, 120, 110, 120, 110, 130, 110, 110, 115, 115, 105, 110, 110, 110, 120];
+  widths.forEach((width, index) => sheet.setColumnWidth(index + 1, width));
+  sheet.setRowHeight(1, 44);
+}
+
+function FS04_writeStatus_(rows, monthlyRate, repaymentStart, repaymentDuration) {
+  const lastRow = rows.length ? rows[rows.length - 1] : [];
+  const closingDebt = FS04_num_(lastRow[22]);
+
+  PropertiesService.getDocumentProperties().setProperty('FS_CONVERGENCE', JSON.stringify({
+    converged: true,
+    iterations: 1,
+    maxDiff: 0,
+    method: 'sequential-opening-debt-interest',
+    monthlyInterestRate: monthlyRate,
+    repaymentStart,
+    repaymentDuration,
+    closingDebt,
+    time: new Date().toISOString()
+  }));
+}
+
+function FS04_readInfoValue_(sheet, label) {
+  const target = FS04_key_(label);
+  const values = sheet.getDataRange().getValues();
+
+  for (let row = 0; row < values.length; row++) {
+    if (FS04_key_(values[row][0]) === target) return values[row][1];
+  }
+  return '';
+}
+
+function FS04_num_(value) {
+  if (typeof value === 'number') return isFinite(value) ? value : 0;
+
+  const text = String(value == null ? '' : value).trim().replace(/\s/g, '');
+  if (!text) return 0;
+
+  const normalized = text.includes(',') && text.includes('.')
+    ? text.replace(/\./g, '').replace(',', '.')
+    : text.replace(/,/g, '');
+  const number = Number(normalized);
+  return isFinite(number) ? number : 0;
+}
+
+function FS04_rate_(value) {
+  if (typeof value === 'number') return value > 1 ? value / 100 : value;
+
+  const text = String(value == null ? '' : value).trim();
+  if (!text) return 0;
+
+  const number = FS04_num_(text.replace('%', ''));
+  return text.includes('%') || number > 1 ? number / 100 : number;
+}
+
+function FS04_norm_(value) {
+  return String(value == null ? '' : value)
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/đ/g, 'd')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+function FS04_key_(value) {
+  return FS04_norm_(value)
+    .replace(/²/g, '2')
+    .replace(/\^2/g, '2')
+    .replace(/m\s*2/g, 'm2')
+    .replace(/[^a-z0-9]/g, '');
 }
