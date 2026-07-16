@@ -150,16 +150,16 @@ function FS_lapSheet00() {
   const fcfeFirst = cashRef + '!' + fcfeCol + firstDataRow;
 
   summary.getRange('D' + rows.npvProject).setFormula(
-    '=IFERROR((NPV((1+$E$21)^(1/12)-1,' + fcffAfterFirst + ')+' + fcffFirst + ')/1E9,0)'
+    '=IFERROR((NPV((1+$E$21)^(1/12)-1;' + fcffAfterFirst + ')+' + fcffFirst + ')/1E9;0)'
   );
   summary.getRange('D' + rows.irrProject).setFormula(
-    '=IFERROR((1+IRR(' + fcffAll + '))^12-1,0)'
+    '=IFERROR((1+IRR(' + fcffAll + '))^12-1;0)'
   );
   summary.getRange('D' + rows.npvEquity).setFormula(
-    '=IFERROR((NPV((1+$E$17)^(1/12)-1,' + fcfeAfterFirst + ')+' + fcfeFirst + ')/1E9,0)'
+    '=IFERROR((NPV((1+$E$17)^(1/12)-1;' + fcfeAfterFirst + ')+' + fcfeFirst + ')/1E9;0)'
   );
   summary.getRange('D' + rows.irrEquity).setFormula(
-    '=IFERROR((1+IRR(' + fcfeAll + '))^12-1,0)'
+    '=IFERROR((1+IRR(' + fcfeAll + '))^12-1;0)'
   );
 
   summary.getRange('C6:C20').setNumberFormat('#,##0.0');
