@@ -53,9 +53,12 @@ function FS_taoKyThuatTuDauVao() {
   row = FS01A_writeInfo_(input, tech, row) + 2;
   row = FS01A_writeTable_(input, tech, row, 'CHI_PHI_CHUNG', 'C. CHI PHÍ CHUNG', 'Khoản mục',
     ['Khoản mục', 'Trước VAT', 'VAT đầu vào', 'Sau VAT', 'Ghi chú', 'Tỷ lệ']) + 2;
-  row = FS01A_writeProducts_(input, tech, row) + 2;
-  row = FS01A_writeTable_(input, tech, row, 'KE_HOACH_BAN_THU_TIEN', 'E. KẾ HOẠCH BÁN HÀNG', 'Nhóm',
-    ['Nhóm', 'Loại sản phẩm', 'Số đợt', 'Đợt', 'Tháng bắt đầu', 'Thời gian', 'Tỷ lệ', 'Ghi chú']) + 2;
+
+  const productIndex = FS01A_writeProducts_(input, tech, row);
+  row = productIndex.nextRow + 2;
+
+  row = FS01A_writePlans_(input, tech, row, productIndex.byCode, productIndex.codeByName) + 2;
+
   FS01A_writeTable_(input, tech, row, 'TIEN_DO_CHI_PHI', 'F. TIẾN ĐỘ CHI PHÍ', 'Khoản mục',
     ['Khoản mục', 'Tháng bắt đầu', 'Thời gian', 'Tỷ lệ', 'Loại']);
 
@@ -81,11 +84,13 @@ function FS01A_writeInfo_(input, tech, startRow) {
     ['Tháng bắt đầu trả gốc', 'B. QUY HOẠCH', 'integer'],
     ['Thời gian trả gốc', 'B. QUY HOẠCH', 'integer']
   ];
+
   const out = [['THONG_TIN_CHUNG', 'GIÁ TRỊ', 'Ô NGUỒN', 'KIỂU DỮ LIỆU']];
   fields.forEach(([label, section, type]) => {
     const cell = FS01A_findValueCell_(input, section, label);
     out.push([label, cell ? cell.getValue() : '', cell ? cell.getA1Notation() : '', type]);
   });
+
   tech.getRange(startRow, 1, out.length, 4).setValues(out);
   return startRow + out.length;
 }
@@ -93,10 +98,12 @@ function FS01A_writeInfo_(input, tech, startRow) {
 function FS01A_writeTable_(input, tech, startRow, title, section, header, headersOut) {
   const table = FS01A_readTable_(input, section, header);
   tech.getRange(startRow, 1).setValue(title);
+
   if (!table) {
     tech.getRange(startRow + 1, 1).setValue('Không tìm thấy dữ liệu');
     return startRow + 2;
   }
+
   const out = [headersOut];
   table.rows.forEach(row => out.push(headersOut.map(h => FS01A_get_(row, table.headers, [h]))));
   tech.getRange(startRow + 1, 1, out.length, headersOut.length).setValues(out);
@@ -109,31 +116,36 @@ function FS01A_writeProducts_(input, tech, startRow) {
   if (!table) throw new Error('Không tìm thấy bảng D. CHI TIẾT SẢN PHẨM.');
 
   const headers = [
-    'Mã SP',
-    'Loại sản phẩm',
-    'Nhóm',
-    'DTKD',
-    'Giá bán trước thuế/m²',
-    'Giá thuê/m²/tháng',
-    'CPXD/m²',
-    'VAT đầu ra',
-    'Thuế TNDN',
-    'Lấp đầy',
-    'CPVH/Doanh thu',
-    'CPBT/Doanh thu',
-    'Thời gian thuê (năm)',
-    'Diện tích đất (m²)'
+    'Mã SP', 'Loại sản phẩm', 'Nhóm', 'DTKD', 'Giá bán trước thuế/m²',
+    'Giá thuê/m²/tháng', 'CPXD/m²', 'VAT đầu ra', 'Thuế TNDN', 'Lấp đầy',
+    'CPVH/Doanh thu', 'CPBT/Doanh thu', 'Thời gian thuê (năm)', 'Diện tích đất (m²)'
   ];
+
   const out = [headers];
+  const byCode = {};
+  const codeByName = {};
 
   table.rows.forEach(row => {
     const code = String(FS01A_get_(row, table.headers, ['Mã SP', 'Mã sản phẩm']) || '').trim().toUpperCase();
-    const name = FS01A_get_(row, table.headers, ['Loại sản phẩm', 'Loại SP', 'Sản phẩm']);
+    const name = String(FS01A_get_(row, table.headers, ['Loại sản phẩm', 'Loại SP', 'Sản phẩm']) || '').trim();
     if (!code && !name) return;
+    if (!code) throw new Error('D. CHI TIẾT SẢN PHẨM còn thiếu Mã SP tại sản phẩm: ' + name);
+    if (byCode[code]) throw new Error('Mã SP bị trùng: ' + code);
+
+    const product = {
+      code,
+      name,
+      group: FS01A_get_(row, table.headers, ['Nhóm', 'Nhóm sản phẩm'])
+    };
+
+    byCode[code] = product;
+    const nameKey = FS01A_key_(name);
+    if (nameKey) codeByName[nameKey] = code;
+
     out.push([
       code,
       name,
-      FS01A_get_(row, table.headers, ['Nhóm', 'Nhóm sản phẩm']),
+      product.group,
       FS01A_get_(row, table.headers, ['DTKD', 'Diện tích kinh doanh']),
       FS01A_get_(row, table.headers, ['Giá bán trước thuế/m2', 'Giá bán trước thuế/m²', 'Giá bán/m2', 'Giá bán']),
       FS01A_get_(row, table.headers, ['Giá thuê/m2/tháng', 'Giá thuê/m²/tháng', 'Giá thuê/m2/th', 'Giá thuê']),
@@ -148,10 +160,46 @@ function FS01A_writeProducts_(input, tech, startRow) {
     ]);
   });
 
-  const codes = out.slice(1).map(r => String(r[0] || '').trim().toUpperCase());
-  if (codes.some(code => !code)) throw new Error('D. CHI TIẾT SẢN PHẨM còn thiếu Mã SP.');
-  const duplicates = [...new Set(codes.filter((code, i) => codes.indexOf(code) !== i))];
-  if (duplicates.length) throw new Error('Mã SP bị trùng: ' + duplicates.join(', '));
+  if (out.length === 1) throw new Error('D. CHI TIẾT SẢN PHẨM không có sản phẩm hoạt động.');
+
+  tech.getRange(startRow + 1, 1, out.length, headers.length).setValues(out);
+  return {
+    nextRow: startRow + 1 + out.length,
+    byCode,
+    codeByName
+  };
+}
+
+function FS01A_writePlans_(input, tech, startRow, productsByCode, codeByName) {
+  const table = FS01A_readTable_(input, 'E. KẾ HOẠCH BÁN HÀNG', 'Nhóm');
+  tech.getRange(startRow, 1).setValue('KE_HOACH_BAN_THU_TIEN');
+
+  const headers = ['Nhóm', 'Mã SP', 'Số đợt', 'Đợt', 'Tháng bắt đầu', 'Thời gian', 'Tỷ lệ', 'Ghi chú'];
+  const out = [headers];
+
+  if (table) {
+    table.rows.forEach(row => {
+      const sourceCode = String(FS01A_get_(row, table.headers, ['Mã SP', 'Mã sản phẩm']) || '').trim().toUpperCase();
+      const sourceName = String(FS01A_get_(row, table.headers, ['Loại sản phẩm', 'Loại SP', 'Sản phẩm']) || '').trim();
+      const code = productsByCode[sourceCode]
+        ? sourceCode
+        : (codeByName[FS01A_key_(sourceName)] || '');
+
+      // Danh mục SAN_PHAM là danh mục hoạt động. Kế hoạch sản phẩm ngoài danh mục không tham gia mô hình.
+      if (!code) return;
+
+      out.push([
+        FS01A_get_(row, table.headers, ['Nhóm']),
+        code,
+        FS01A_get_(row, table.headers, ['Số đợt']),
+        FS01A_get_(row, table.headers, ['Đợt']),
+        FS01A_get_(row, table.headers, ['Tháng bắt đầu']),
+        FS01A_get_(row, table.headers, ['Thời gian']),
+        FS01A_get_(row, table.headers, ['Tỷ lệ']),
+        FS01A_get_(row, table.headers, ['Ghi chú'])
+      ]);
+    });
+  }
 
   tech.getRange(startRow + 1, 1, out.length, headers.length).setValues(out);
   return startRow + 1 + out.length;
@@ -178,6 +226,7 @@ function FS01A_readTable_(sheet, sectionText, headerText) {
     blanks = 0;
     rows.push(sheet.getRange(r, 1, 1, lastCol).getValues()[0]);
   }
+
   return { headers, rows };
 }
 
@@ -186,10 +235,15 @@ function FS01A_findValueCell_(sheet, sectionText, label) {
   const section = FS01A_norm_(sectionText);
   const target = FS01A_norm_(label);
   let start = -1;
+
   for (let r = 0; r < data.length; r++) {
-    if (data[r].some(v => FS01A_norm_(v).includes(section))) { start = r; break; }
+    if (data[r].some(v => FS01A_norm_(v).includes(section))) {
+      start = r;
+      break;
+    }
   }
   if (start < 0) return null;
+
   for (let r = start + 1; r <= Math.min(start + 15, data.length - 1); r++) {
     for (let c = 0; c < data[r].length - 1; c++) {
       const value = FS01A_norm_(data[r][c]);
@@ -202,7 +256,9 @@ function FS01A_findValueCell_(sheet, sectionText, label) {
 function FS01A_findRow_(sheet, text) {
   const target = FS01A_norm_(text);
   const data = sheet.getDataRange().getDisplayValues();
-  for (let r = 0; r < data.length; r++) if (data[r].some(v => FS01A_norm_(v).includes(target))) return r + 1;
+  for (let r = 0; r < data.length; r++) {
+    if (data[r].some(v => FS01A_norm_(v).includes(target))) return r + 1;
+  }
   return 0;
 }
 
@@ -217,7 +273,9 @@ function FS01A_findHeaderRow_(sheet, headerText, startRow) {
 
 function FS01A_lastCol_(sheet, row) {
   const values = sheet.getRange(row, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
-  for (let c = values.length - 1; c >= 0; c--) if (String(values[c]).trim()) return c + 1;
+  for (let c = values.length - 1; c >= 0; c--) {
+    if (String(values[c]).trim()) return c + 1;
+  }
   return 1;
 }
 
@@ -250,10 +308,7 @@ function FS01A_format_(sheet) {
     .forEach(r => sheet.getRange(r, 1, 1, Math.min(lastCol, 14)).setFontWeight('bold'));
 
   if (productRow) {
-    sheet.getRange(productRow + 1, 1, 1, 14)
-      .setFontWeight('bold')
-      .setWrap(true);
-
+    sheet.getRange(productRow + 1, 1, 1, 14).setFontWeight('bold').setWrap(true);
     const rows = planRow ? planRow - productRow - 4 : 0;
     if (rows > 0) {
       sheet.getRange(productRow + 2, 4, rows, 4).setNumberFormat('#,##0');
@@ -261,6 +316,10 @@ function FS01A_format_(sheet) {
       sheet.getRange(productRow + 2, 13, rows, 1).setNumberFormat('0');
       sheet.getRange(productRow + 2, 14, rows, 1).setNumberFormat('#,##0');
     }
+  }
+
+  if (planRow) {
+    sheet.getRange(planRow + 1, 1, 1, 8).setFontWeight('bold').setWrap(true);
   }
 
   sheet.setColumnWidth(1, 90);
