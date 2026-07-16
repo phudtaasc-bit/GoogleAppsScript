@@ -10,12 +10,23 @@ function FS_lapSheet02() {
 
   const months = Math.max(0, FS02_num_(FS02_readInfoValue_(tech, 'Số tháng mô hình')));
   const startDate = FS02_readInfoValue_(tech, 'Ngày bắt đầu dự án');
-  const annualGrowth = FS02_rate_(FS02_readInfoValue_(tech, 'Tỷ lệ tăng giá/năm'));
+
+  const legacyGrowth = FS02_rate_(FS02_readInfoValue_(tech, 'Tỷ lệ tăng giá/năm'));
+  const annualSaleGrowthRaw = FS02_readInfoValue_(tech, 'Tỷ lệ tăng giá bán/năm');
+  const annualRentGrowthRaw = FS02_readInfoValue_(tech, 'Tỷ lệ tăng giá thuê/năm');
+  const annualSaleGrowth = annualSaleGrowthRaw === ''
+    ? legacyGrowth
+    : FS02_rate_(annualSaleGrowthRaw);
+  const annualRentGrowth = annualRentGrowthRaw === ''
+    ? legacyGrowth
+    : FS02_rate_(annualRentGrowthRaw);
 
   if (!months) throw new Error('Số tháng mô hình phải lớn hơn 0.');
   if (!(startDate instanceof Date) || isNaN(startDate.getTime())) {
     throw new Error('Ngày bắt đầu dự án không hợp lệ.');
   }
+  if (annualSaleGrowth <= -1) throw new Error('Tỷ lệ tăng giá bán/năm phải lớn hơn -100%.');
+  if (annualRentGrowth <= -1) throw new Error('Tỷ lệ tăng giá thuê/năm phải lớn hơn -100%.');
 
   const products = FS02_readBlock_(tech, 'SAN_PHAM')
     .map(row => ({
@@ -56,7 +67,9 @@ function FS_lapSheet02() {
 
   for (let monthNo = 1; monthNo <= months; monthNo++) {
     const date = FS02_addMonths_(startDate, monthNo - 1);
-    const priceFactor = Math.pow(1 + annualGrowth, (monthNo - 1) / 12);
+    const elapsedYears = (monthNo - 1) / 12;
+    const salePriceFactor = Math.pow(1 + annualSaleGrowth, elapsedYears);
+    const rentPriceFactor = Math.pow(1 + annualRentGrowth, elapsedYears);
 
     products.forEach(product => {
       const key = product.code + '|' + monthNo;
@@ -64,8 +77,8 @@ function FS_lapSheet02() {
         ? (plansByStartMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0)
         : (plansByActiveMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0);
 
-      const salePrice = product.salePrice * priceFactor;
-      const rentPrice = product.rentPrice * priceFactor;
+      const salePrice = product.salePrice * salePriceFactor;
+      const rentPrice = product.rentPrice * rentPriceFactor;
       const saleRevenue = product.group === 'Bán'
         ? product.area * salePrice * collectionProgress
         : 0;
