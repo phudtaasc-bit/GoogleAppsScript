@@ -17,43 +17,30 @@ function FS_lapSheet02() {
     throw new Error('Ngày bắt đầu dự án không hợp lệ.');
   }
 
-  const productRows = FS02_readBlock_(tech, 'SAN_PHAM');
-  const products = productRows.map(row => ({
-    code: String(row[0] || '').trim().toUpperCase(),
-    name: String(row[1] || '').trim(),
-    group: FS02_group_(row[2]),
-    area: FS02_num_(row[3]),
-    salePrice: FS02_num_(row[4]),
-    rentPrice: FS02_num_(row[5]),
-    vatRate: FS02_rate_(row[7]),
-    occupancy: FS02_rate_(row[9])
-  })).filter(product => product.code || product.name);
+  const products = FS02_readBlock_(tech, 'SAN_PHAM')
+    .map(row => ({
+      code: String(row[0] || '').trim().toUpperCase(),
+      name: String(row[1] || '').trim(),
+      group: FS02_group_(row[2]),
+      area: FS02_num_(row[3]),
+      salePrice: FS02_num_(row[4]),
+      rentPrice: FS02_num_(row[5]),
+      vatRate: FS02_rate_(row[7]),
+      occupancy: FS02_rate_(row[9])
+    }))
+    .filter(product => product.code || product.name);
 
   FS02_validateProducts_(products);
 
-  const codeByProductName = {};
-  products.forEach(product => {
-    const key = FS02_key_(product.name);
-    if (key) codeByProductName[key] = product.code;
-  });
-
-  const planRows = FS02_readBlock_(tech, 'KE_HOACH_BAN_THU_TIEN');
-  const plans = planRows.map(row => {
-    const productName = String(row[1] || '').trim();
-    return {
-      code: codeByProductName[FS02_key_(productName)] || '',
-      productName,
+  const productCodes = new Set(products.map(product => product.code));
+  const plans = FS02_readBlock_(tech, 'KE_HOACH_BAN_THU_TIEN')
+    .map(row => ({
+      code: String(row[1] || '').trim().toUpperCase(),
       start: Math.max(1, FS02_num_(row[4])),
       duration: Math.max(1, FS02_num_(row[5])),
       rate: FS02_rate_(row[6])
-    };
-  }).filter(plan => plan.productName || plan.code);
-
-  const unresolvedPlans = plans.filter(plan => !plan.code);
-  if (unresolvedPlans.length) {
-    const names = [...new Set(unresolvedPlans.map(plan => plan.productName).filter(Boolean))];
-    throw new Error('Kế hoạch bán/thu tiền có sản phẩm chưa ánh xạ được Mã SP: ' + names.join(', '));
-  }
+    }))
+    .filter(plan => plan.code && productCodes.has(plan.code));
 
   const plansByCodeMonth = FS02_indexPlans_(plans, months);
   const rows = [];
