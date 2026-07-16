@@ -37,8 +37,10 @@ function FS_lapSheet00() {
   ], cost.getName());
   FS00_require_(p.index, ['lnst', 'thuetndn'], profit.getName());
   FS00_require_(f.index, [
-    'fcff', 'fcfe', 'vongopcsh', 'giainganvay', 'dunocuoiky', 'laivay', 'vatphainop'
+    'thang', 'fcff', 'fcfe', 'vongopcsh', 'giainganvay', 'dunocuoiky', 'laivay', 'vatphainop'
   ], cash.getName());
+
+  FS00_validateCashDates_(f, cash.getName());
 
   const projectName = FS00_readInfoValue_(tech, 'Tên dự án');
   const discountCell = FS00_findInfoCell_(tech, 'Tỷ suất chiết khấu');
@@ -68,8 +70,8 @@ function FS_lapSheet00() {
   const loan = sumF('giainganvay');
   if (equity + loan > totalInvestment + 1) {
     throw new Error(
-      'Vốn CSH và vốn vay vượt Tổng vốn đầu tư. ' +
-      'Tổng vốn đầu tư: ' + Math.round(totalInvestment).toLocaleString('vi-VN') +
+      'Vốn CSH và vốn vay vượt Tổng vốn đầu tư. Tổng vốn đầu tư: ' +
+      Math.round(totalInvestment).toLocaleString('vi-VN') +
       '; vốn CSH + vốn vay: ' + Math.round(equity + loan).toLocaleString('vi-VN') + ' đồng.'
     );
   }
@@ -149,29 +151,26 @@ function FS_lapSheet00() {
 
   const cashRef = FS00_quoteSheet_(cash.getName());
   const lastCashRow = cash.getLastRow();
+  const dateCol = FS00_columnLetter_(f.index.thang + 1);
   const fcffCol = FS00_columnLetter_(f.index.fcff + 1);
   const fcfeCol = FS00_columnLetter_(f.index.fcfe + 1);
   const firstDataRow = 2;
-  const secondDataRow = Math.min(3, lastCashRow);
 
+  const dateAll = cashRef + '!' + dateCol + firstDataRow + ':' + dateCol + lastCashRow;
   const fcffAll = cashRef + '!' + fcffCol + firstDataRow + ':' + fcffCol + lastCashRow;
   const fcfeAll = cashRef + '!' + fcfeCol + firstDataRow + ':' + fcfeCol + lastCashRow;
-  const fcffAfterFirst = cashRef + '!' + fcffCol + secondDataRow + ':' + fcffCol + lastCashRow;
-  const fcfeAfterFirst = cashRef + '!' + fcfeCol + secondDataRow + ':' + fcfeCol + lastCashRow;
-  const fcffFirst = cashRef + '!' + fcffCol + firstDataRow;
-  const fcfeFirst = cashRef + '!' + fcfeCol + firstDataRow;
 
   summary.getRange('D' + rows.npvProject).setFormula(
-    '=IFERROR((NPV((1+$E$21)^(1/12)-1;' + fcffAfterFirst + ')+' + fcffFirst + ')/1E9;0)'
+    '=IFERROR(XNPV($E$21;' + fcffAll + ';' + dateAll + ')/1E9;0)'
   );
   summary.getRange('D' + rows.irrProject).setFormula(
-    '=IFERROR((1+IRR(' + fcffAll + '))^12-1;0)'
+    '=IFERROR(XIRR(' + fcffAll + ';' + dateAll + ');0)'
   );
   summary.getRange('D' + rows.npvEquity).setFormula(
-    '=IFERROR((NPV((1+$E$17)^(1/12)-1;' + fcfeAfterFirst + ')+' + fcfeFirst + ')/1E9;0)'
+    '=IFERROR(XNPV($E$17;' + fcfeAll + ';' + dateAll + ')/1E9;0)'
   );
   summary.getRange('D' + rows.irrEquity).setFormula(
-    '=IFERROR((1+IRR(' + fcfeAll + '))^12-1;0)'
+    '=IFERROR(XIRR(' + fcfeAll + ';' + dateAll + ');0)'
   );
 
   summary.getRange('C6:C20').setNumberFormat('#,##0.0');
@@ -269,6 +268,18 @@ function FS00_readTable_(sheet) {
 function FS00_require_(index, required, sheetName) {
   const missing = required.filter(key => index[key] == null);
   if (missing.length) throw new Error('Sheet "' + sheetName + '" thiếu cột: ' + missing.join(', '));
+}
+
+function FS00_validateCashDates_(table, sheetName) {
+  const position = table.index.thang;
+  for (let i = 0; i < table.values.length; i++) {
+    const value = table.values[i][position];
+    if (!(value instanceof Date) || isNaN(value.getTime())) {
+      throw new Error(
+        'Cột "Tháng" tại sheet "' + sheetName + '" phải là ngày thực. Lỗi tại dòng ' + (i + 2) + '.'
+      );
+    }
+  }
 }
 
 function FS00_sumColumn_(table, key) {
