@@ -74,7 +74,8 @@ function FS01A_writeInfo_(input, tech, startRow) {
     ['Số tháng mô hình', 'A. THÔNG TIN CHUNG', 'integer'],
     ['Đơn vị tiền', 'A. THÔNG TIN CHUNG', 'text'],
     ['Tỷ suất chiết khấu', 'A. THÔNG TIN CHUNG', 'percent'],
-    ['Tỷ lệ tăng giá/năm', 'A. THÔNG TIN CHUNG', 'percent'],
+    ['Tỷ lệ tăng giá bán/năm', 'A. THÔNG TIN CHUNG', 'percent'],
+    ['Tỷ lệ tăng giá thuê/năm', 'A. THÔNG TIN CHUNG', 'percent'],
     ['Tỷ lệ trượt chi phí/năm', 'A. THÔNG TIN CHUNG', 'percent'],
     ['Diện tích đất', 'B. QUY HOẠCH', 'number'],
     ['Bắt đầu xây dựng', 'B. QUY HOẠCH', 'integer'],
@@ -185,7 +186,6 @@ function FS01A_writePlans_(input, tech, startRow, productsByCode, codeByName) {
         ? sourceCode
         : (codeByName[FS01A_key_(sourceName)] || '');
 
-      // Danh mục SAN_PHAM là danh mục hoạt động. Kế hoạch sản phẩm ngoài danh mục không tham gia mô hình.
       if (!code) return;
 
       out.push([
