@@ -84,9 +84,9 @@ function FS02_format_(sh, endRow) {
   if (endRow > 1) {
     sh.getRange(2, 2, endRow - 1, 1).setNumberFormat('MM/yyyy');
     sh.getRange(2, 8, endRow - 1, 1).setNumberFormat('#,##0.00');
-    sh.getRange(2, 9, endRow - 1, 2).setNumberFormat('#,##0.00');
+    sh.getRange(2, 9, endRow - 1, 2).setNumberFormat('#,##0');
     sh.getRange(2, 12, endRow - 1, 2).setNumberFormat('0.00%');
-    sh.getRange(2, 14, endRow - 1, 6).setNumberFormat('#,##0.00');
+    sh.getRange(2, 14, endRow - 1, 6).setNumberFormat('#,##0');
     sh.getRange(2, 17, endRow - 1, 1).setNumberFormat('0.00%');
     sh.getRange(2, 20, endRow - 1, 1).setNumberFormat('0.00%');
   }
