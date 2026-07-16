@@ -48,6 +48,18 @@ function FS_lapSheet00() {
   if (!discountCell) throw new Error('Không tìm thấy chỉ tiêu "Tỷ suất chiết khấu" tại 01A. Kỹ thuật.');
   if (!loanRateCell) throw new Error('Không tìm thấy chỉ tiêu "Lãi suất vay năm" tại 01A. Kỹ thuật.');
 
+  const products = FS00_readProducts_(tech);
+  if (!products.length) throw new Error('Block SAN_PHAM tại 01A. Kỹ thuật không có sản phẩm hợp lệ.');
+
+  const revenueDetails = products.map(product => ({
+    code: product.code,
+    name: product.name,
+    value: FS00_sumByCode_(r, product.code, ['tongdoanhthutruocvat', 'vatdaura'])
+  }));
+
+  const detailRows = FS00_syncRevenueRows_(summary, revenueDetails);
+  const rows = FS00_summaryRows_(summary);
+
   const sumR = key => FS00_sumColumn_(r, key);
   const sumC = key => FS00_sumColumn_(c, key);
   const sumP = key => FS00_sumColumn_(p, key);
@@ -79,12 +91,6 @@ function FS_lapSheet00() {
   const totalFunding = equity + loan + customerFunding;
 
   const totalRevenueWithVat = sumR('tongdoanhthutruocvat') + sumR('vatdaura');
-  const revenueCC = FS00_sumByCode_(r, 'CC', ['tongdoanhthutruocvat', 'vatdaura']);
-  const revenueLK = FS00_sumByCode_(r, 'LK', ['tongdoanhthutruocvat', 'vatdaura']);
-  const revenueRent =
-    FS00_sumByCode_(r, 'TMDV', ['tongdoanhthutruocvat', 'vatdaura']) +
-    FS00_sumByCode_(r, 'CHO', ['tongdoanhthutruocvat', 'vatdaura']);
-
   const pat = sumP('lnst');
   const cit = sumP('thuetndn');
   const vatPayable = sumF('vatphainop');
@@ -96,11 +102,7 @@ function FS_lapSheet00() {
 
   summary.getRange('A2:E2').breakApart();
   summary.getRange('A2:E2').merge().setValue(projectName ? 'DỰ ÁN: ' + projectName : 'DỰ ÁN');
-  summary.getRange('B26').setValue('Phần Chung cư');
-  summary.getRange('B27').setValue('Phần Liền kề');
-  summary.getRange('B28').setValue('Phần TMDV / Chợ cho thuê');
 
-  const rows = FS00_summaryRows_(summary);
   const billion = value => FS00_num_(value) / FS00_CFG.UNIT_DIVISOR;
   const coreInvestment = totalInvestment - selling - operating - maintenance;
 
@@ -108,11 +110,15 @@ function FS_lapSheet00() {
     C6: billion(construction), C7: billion(clearance), C8: billion(land),
     C9: billion(infrastructure), C10: billion(contingency), C11: billion(interest),
     C12: billion(totalInvestment), C13: billion(totalInvestmentExLand),
-    C17: billion(equity), C18: billion(loan), C19: billion(customerFunding), C20: billion(totalFunding),
-    D25: billion(totalRevenueWithVat), D26: billion(revenueCC), D27: billion(revenueLK), D28: billion(revenueRent),
-    D30: billion(coreInvestment), D31: billion(selling)
+    C17: billion(equity), C18: billion(loan), C19: billion(customerFunding), C20: billion(totalFunding)
   };
 
+  valueMap['D' + rows.totalRevenue] = billion(totalRevenueWithVat);
+  detailRows.forEach((row, index) => {
+    valueMap['D' + row] = billion(revenueDetails[index].value);
+  });
+  valueMap['D' + rows.coreInvestment] = billion(coreInvestment);
+  valueMap['D' + rows.selling] = billion(selling);
   valueMap['D' + rows.operating] = billion(operating);
   valueMap['D' + rows.maintenance] = billion(maintenance);
   valueMap['D' + rows.pat] = billion(pat);
@@ -124,7 +130,9 @@ function FS_lapSheet00() {
   valueMap['D' + rows.vatPayable] = billion(vatPayable);
   Object.keys(valueMap).forEach(a1 => summary.getRange(a1).setValue(valueMap[a1]));
 
-  summary.getRange('D29').setFormula('=SUM(D30:D' + rows.maintenance + ')');
+  summary.getRange('D' + rows.totalCost).setFormula(
+    '=SUM(D' + rows.coreInvestment + ':D' + rows.maintenance + ')'
+  );
   summary.getRange(rows.operating, 1, 1, 5).setFontWeight('normal');
   summary.getRange(rows.maintenance, 1, 1, 5).setFontWeight('normal');
 
@@ -176,7 +184,7 @@ function FS_lapSheet00() {
   summary.getRange('C6:C20').setNumberFormat('#,##0.0');
   summary.getRange('D6:D20').setNumberFormat('0.0%');
   summary.getRange('E17:E21').setNumberFormat('0.00%');
-  summary.getRange('D25:D' + rows.pat).setNumberFormat('#,##0.0');
+  summary.getRange(rows.totalRevenue, 4, rows.pat - rows.totalRevenue + 1, 1).setNumberFormat('#,##0.0');
   summary.getRange('D' + rows.npvProject).setNumberFormat('#,##0.0');
   summary.getRange('D' + rows.irrProject).setNumberFormat('0.00%');
   summary.getRange('D' + rows.paybackProject).setNumberFormat('0.00');
@@ -186,7 +194,97 @@ function FS_lapSheet00() {
   summary.getRange('D' + rows.peakDebt + ':D' + rows.vatPayable).setNumberFormat('#,##0.0');
 
   SpreadsheetApp.flush();
-  return { rows, totalInvestment, totalFunding, peakDebt };
+  return { rows, totalInvestment, totalFunding, peakDebt, productCount: products.length };
+}
+
+function FS00_syncRevenueRows_(sheet, revenueDetails) {
+  const totalRevenueRow = FS00_findSummaryRow_(sheet, 'Tổng doanh thu có VAT');
+  const totalCostRow = FS00_findSummaryRow_(sheet, 'Tổng chi phí có VAT');
+  if (!totalRevenueRow || !totalCostRow || totalCostRow <= totalRevenueRow) {
+    throw new Error('Không xác định được vùng Mục 1 và Mục 2 trên Sheet 00.');
+  }
+
+  const desiredCount = revenueDetails.length;
+  const currentCount = totalCostRow - totalRevenueRow - 1;
+  const formatSourceRow = currentCount > 0 ? totalRevenueRow + 1 : totalRevenueRow;
+
+  if (desiredCount > currentCount) {
+    const addCount = desiredCount - currentCount;
+    sheet.insertRowsBefore(totalCostRow, addCount);
+    sheet.getRange(formatSourceRow, 1, 1, 5).copyTo(
+      sheet.getRange(totalCostRow, 1, addCount, 5),
+      SpreadsheetApp.CopyPasteType.PASTE_FORMAT,
+      false
+    );
+  } else if (desiredCount < currentCount) {
+    sheet.deleteRows(totalRevenueRow + 1 + desiredCount, currentCount - desiredCount);
+  }
+
+  const rows = [];
+  revenueDetails.forEach((item, index) => {
+    const row = totalRevenueRow + 1 + index;
+    rows.push(row);
+    sheet.getRange(row, 1, 1, 5).clearContent();
+    sheet.getRange(row, 1).setValue('1.' + (index + 1));
+    sheet.getRange(row, 2).setValue('Phần ' + item.name);
+    sheet.getRange(row, 3).setValue('tỷ đồng');
+    sheet.getRange(row, 1, 1, 5).setFontWeight('normal');
+  });
+
+  return rows;
+}
+
+function FS00_readProducts_(sheet) {
+  const block = FS00_findBlock_(sheet, 'SAN_PHAM');
+  const values = sheet.getRange(block.startRow, 1, block.rowCount, 14).getValues();
+  const seen = {};
+  return values.map(row => ({
+    code: String(row[0] || '').trim().toUpperCase(),
+    name: String(row[1] || '').trim()
+  })).filter(product => {
+    if (!product.code || !product.name || seen[product.code]) return false;
+    seen[product.code] = true;
+    return true;
+  });
+}
+
+function FS00_findBlock_(sheet, blockName) {
+  const data = sheet.getDataRange().getDisplayValues();
+  const target = FS00_key_(blockName);
+  let blockRow = 0;
+  for (let r = 0; r < data.length; r++) {
+    if (data[r].some(value => FS00_key_(value) === target)) {
+      blockRow = r + 1;
+      break;
+    }
+  }
+  if (!blockRow) throw new Error('Không tìm thấy block ' + blockName + ' tại ' + sheet.getName() + '.');
+
+  const startRow = blockRow + 2;
+  let endRow = startRow - 1;
+  let blankCount = 0;
+  const knownBlocks = ['thongtinchung', 'chiphi chung', 'chiphi chung vat dau vao van hanh', 'sanpham', 'kehoachbanthutien', 'tiendochiphi'];
+
+  for (let row = startRow; row <= sheet.getLastRow(); row++) {
+    const first = String(sheet.getRange(row, 1).getDisplayValue() || '').trim();
+    const firstKey = FS00_key_(first);
+    if (row > startRow && knownBlocks.some(name => firstKey === FS00_key_(name))) break;
+
+    if (!first) {
+      blankCount++;
+      if (blankCount >= 2) break;
+    } else {
+      blankCount = 0;
+      endRow = row;
+    }
+  }
+
+  return {
+    blockRow,
+    startRow,
+    endRow,
+    rowCount: Math.max(0, endRow - startRow + 1)
+  };
 }
 
 function FS00_ensureOperatingRows_(sheet) {
@@ -214,6 +312,10 @@ function FS00_ensureOperatingRows_(sheet) {
 
 function FS00_summaryRows_(sheet) {
   const aliases = {
+    totalRevenue: ['Tổng doanh thu có VAT'],
+    totalCost: ['Tổng chi phí có VAT'],
+    coreInvestment: ['Tổng vốn đầu tư dự án'],
+    selling: ['Chi phí bán hàng'],
     operating: ['Chi phí vận hành'],
     maintenance: ['Chi phí bảo trì'],
     pat: ['Lợi nhuận sau thuế'],
@@ -301,9 +403,10 @@ function FS00_maxValue_(table, key) {
 
 function FS00_sumByCode_(table, code, keys) {
   const codePosition = table.index.masp;
+  const normalizedCode = String(code || '').trim().toUpperCase();
   return table.values.reduce((sum, row) => {
     const rowCode = String(row[codePosition] || '').trim().toUpperCase();
-    if (rowCode !== code) return sum;
+    if (rowCode !== normalizedCode) return sum;
     return sum + keys.reduce((subtotal, key) => {
       const position = table.index[key];
       return subtotal + (position == null ? 0 : FS00_num_(row[position]));
