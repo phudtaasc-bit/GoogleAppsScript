@@ -1,612 +1,511 @@
-/*************************************************
- * 05_DoNhay_Fast.gs
- * Độ nhạy nhanh - NPV/IRR dự án theo FCFF
- * Không rebuild Sheet 02/03/04 theo từng kịch bản
- *************************************************/
-
-const FS05F = {
+const FS05_CFG = Object.freeze({
   SHEET: '05. Độ nhạy',
-  REV_FACTORS: [-0.10, -0.08, -0.05, -0.04, -0.02, 0, 0.02, 0.04, 0.05, 0.08, 0.10],
-  COST_FACTORS: [-0.10, -0.08, -0.05, -0.04, -0.02, 0, 0.02, 0.04, 0.05, 0.08, 0.10],
+  TECH: '01A. Kỹ thuật',
+  SUMMARY: '00. Tổng hợp',
+  CACHE: '_FS05_CACHE',
+  FACTORS: [-0.10, -0.08, -0.05, -0.04, -0.02, 0, 0.02, 0.04, 0.05, 0.08, 0.10],
+  MAX_RUNTIME_MS: 240000,
   COLOR_BASE: '#008000',
   COLOR_CENTER: '#FFFF00',
   COLOR_LOW: '#E6B8B7',
   COLOR_WHITE: '#FFFFFF',
-  COLOR_TITLE: '#1F4E78',
   COLOR_HEADER: '#A6A6A6',
-  COLOR_SECTION: '#FFC000'
-};
+  COLOR_SECTION: '#FFC000',
+  PROP_CURSOR: 'FS05_CURSOR',
+  PROP_RUNNING: 'FS05_RUNNING'
+});
 
 function FS05_DoNhay_Fast() {
-  const ss = SpreadsheetApp.getActive();
-  const input = FS05F_readInput_();
-
-  let sh = ss.getSheetByName(FS05F.SHEET);
-  if (!sh) sh = ss.insertSheet(FS05F.SHEET);
-
-  sh.clear();
-  sh.clearFormats();
-
-  const baseSheet = ss.getSheetByName('00. Tổng hợp');
-  if (!baseSheet) throw new Error('Không tìm thấy sheet "00. Tổng hợp".');
-
-  const base = {
-    npvProject: Number(baseSheet.getRange('D33').getValue()) || 0,
-    irrProject: Number(baseSheet.getRange('D34').getValue()) || 0
-  };
-
-  FS05F_layout_(sh);
-
-  const matrix = FS05F_computeMatrices_(input, base);
-
-  FS05F_writeBlock_(sh, 4, 'NPV', base.npvProject, matrix.npvProject, '#,##0.0');
-  FS05F_writeBlock_(sh, 20, 'IRR', base.irrProject, matrix.irrProject, '0.0%');
-
-  FS05F_format_(sh);
-
-  SpreadsheetApp.getUi().alert('Đã chạy xong độ nhạy nhanh: NPV/IRR dự án.');
+  return FS05_lapBangDoNhay();
 }
 
-/***********************
- * READ INPUT
- ***********************/
-
-function FS05F_readInput_() {
+function FS05_lapBangDoNhay() {
   const ss = SpreadsheetApp.getActive();
-  const tech = ss.getSheetByName('01. Kỹ thuật');
-  if (!tech) throw new Error('Không tìm thấy sheet "01. Kỹ thuật".');
+  const ui = SpreadsheetApp.getUi();
+  const tech = ss.getSheetByName(FS05_CFG.TECH);
+  const summary = ss.getSheetByName(FS05_CFG.SUMMARY);
+  if (!tech || !summary) {
+    throw new Error('Cần lập đủ sheet "01A. Kỹ thuật" và "00. Tổng hợp" trước khi chạy độ nhạy.');
+  }
 
-  const sp = FS05F_getBlockInfo_(tech, 'SAN_PHAM');
-  const kh = FS05F_getBlockInfo_(tech, 'KE_HOACH_BAN_THU_TIEN');
-  const cp = FS05F_getBlockInfo_(tech, 'CHI_PHI_CHUNG');
-  const td = FS05F_getBlockInfo_(tech, 'TIEN_DO_CHI_PHI');
+  FS05_xoaTriggerTiepTuc_();
+  PropertiesService.getDocumentProperties().deleteAllProperties();
 
-  const cfg = {
-    months: Number(FS05F_getInfoValue_(tech, 'Số tháng mô hình')) || 40,
-    discountRate: Number(FS05F_getInfoValue_(tech, 'Tỷ suất chiết khấu')) || 0,
-    costInflation: Number(FS05F_getInfoValue_(tech, 'Tỷ lệ trượt chi phí/năm')) || 0
-  };
+  const sheet = FS05_getOrCreateSheet_(ss, FS05_CFG.SHEET);
+  const cache = FS05_getOrCreateSheet_(ss, FS05_CFG.CACHE);
+  cache.clear();
+  cache.getRange(1, 1, 1, 6).setValues([['Nhóm', 'Dòng', 'Cột', 'NPV', 'IRR', 'Trạng thái']]);
+  cache.hideSheet();
 
-  const cpRows = tech.getRange(cp.startRow, 1, cp.rowCount, 6).getValues().map(r => ({
-    name: String(r[0] || ''),
-    beforeVat: Number(r[1]) || 0,
-    vatRate: FS05F_percent_(r[2]),
-    afterVat: Number(r[3]) || 0,
-    note: String(r[4] || ''),
-    ratio: FS05F_percent_(r[5])
-  }));
-
-  const products = tech.getRange(sp.startRow, 1, sp.rowCount, 12).getValues().map(r => ({
-    name: String(r[0] || ''),
-    form: String(r[1] || ''),
-    area: Number(r[2]) || 0,
-    salePrice: Number(r[3]) || 0,
-    rentPrice: Number(r[4]) || 0,
-    cpxdM2: Number(r[5]) || 0,
-    vatOut: FS05F_percent_(r[6]),
-    taxRate: FS05F_percent_(r[7]),
-    occupancy: FS05F_percent_(r[8]),
-    cpvh: FS05F_percent_(r[9]),
-    note: String(r[10] || ''),
-    landArea: Number(r[11]) || 0
-  }));
-
-  const planRows = tech.getRange(kh.startRow, 1, kh.rowCount, 8).getValues().map(r => ({
-    group: String(r[0] || ''),
-    product: String(r[1] || ''),
-    phase: Number(r[3]) || 0,
-    start: Number(r[4]) || 0,
-    duration: Number(r[5]) || 0,
-    rate: FS05F_percent_(r[6]),
-    note: String(r[7] || '')
-  }));
-
-  const scheduleRows = tech.getRange(td.startRow, 1, td.rowCount, 5).getValues().map(r => ({
-    item: String(r[0] || ''),
-    start: Number(r[1]) || 0,
-    duration: Number(r[2]) || 0,
-    rate: FS05F_percent_(r[3]),
-    type: String(r[4] || '')
-  }));
-
-  return { cfg, cpRows, products, planRows, scheduleRows };
-}
-
-/***********************
- * MATRIX ENGINE
- ***********************/
-
-function FS05F_computeMatrices_(input, base) {
-  const out = {
-    npvProject: [],
-    irrProject: []
-  };
-
-  FS05F.COST_FACTORS.forEach(costChange => {
-    const rowNPV = [];
-    const rowIRR = [];
-
-    FS05F.REV_FACTORS.forEach(revChange => {
-      if (revChange === 0 && costChange === 0) {
-        rowNPV.push(base.npvProject);
-        rowIRR.push(base.irrProject);
-      } else {
-        const kpi = FS05F_computeScenario_(input, 1 + revChange, 1 + costChange).kpi;
-        rowNPV.push(kpi.npvProject / 1000000000);
-        rowIRR.push(kpi.irrProject);
-      }
-    });
-
-    out.npvProject.push(rowNPV);
-    out.irrProject.push(rowIRR);
+  FS05_taoKhung_(sheet);
+  PropertiesService.getDocumentProperties().setProperties({
+    [FS05_CFG.PROP_CURSOR]: '0',
+    [FS05_CFG.PROP_RUNNING]: '1'
   });
 
-  return out;
-}
-
-function FS05F_computeScenario_(input, revFactor, costFactor) {
-  const revenue = FS05F_computeRevenue_(input, revFactor);
-  const cost = FS05F_computeCosts_(input, costFactor, revenue);
-  const tax = FS05F_computeTax_(input, revenue, cost);
-  const cash = FS05F_computeFCFF_(input, revenue, cost, tax);
-  const kpi = FS05F_calcKpi_(input, cash);
-
-  return { revenue, cost, tax, cash, kpi };
-}
-
-/***********************
- * REVENUE
- ***********************/
-
-function FS05F_computeRevenue_(input, revFactor) {
-  const out = [];
-
-  for (let t = 1; t <= input.cfg.months; t++) {
-    let beforeVat = 0;
-    let vatOut = 0;
-    let cashInVat = 0;
-
-    input.products.forEach(p => {
-      const form = FS05F_norm_(p.form);
-      const progress = FS05F_collectProgress_(input.planRows, p.name, t);
-      let amount = 0;
-
-      if (form.includes('ban')) {
-        amount = p.area * p.salePrice * revFactor * progress;
-      } else if (form.includes('thue')) {
-        amount = p.area * p.rentPrice * p.occupancy * revFactor;
-      }
-
-      beforeVat += amount;
-      vatOut += amount * p.vatOut;
-      cashInVat += amount * (1 + p.vatOut);
-    });
-
-    out.push({ beforeVat, vatOut, cashInVat });
-  }
-
-  return out;
-}
-
-function FS05F_collectProgress_(plans, productName, month) {
-  const target = FS05F_norm_(productName);
-
-  return plans
-    .filter(p => FS05F_norm_(p.group) === 'thu tien' && FS05F_norm_(p.product) === target)
-    .reduce((s, p) => {
-      if (p.duration <= 0) return s;
-      if (month >= p.start && month < p.start + p.duration) return s + p.rate / p.duration;
-      return s;
-    }, 0);
-}
-
-/***********************
- * COST + VAT
- ***********************/
-
-function FS05F_computeCosts_(input, costFactor, revenue) {
-  const rows = [];
-
-  const salesRatio = FS05F_getCostRatio_(input, 'Chi phí bán hàng');
-  const contingencyRatio = FS05F_getCostRatio_(input, 'Chi phí dự phòng');
-
-  for (let t = 1; t <= input.cfg.months; t++) {
-    const xd = FS05F_costBySchedule_(input, 'Chi phí XD/TB/khác', t, true, costFactor);
-    const gpmb = FS05F_costBySchedule_(input, 'Chi phí GPMB', t, false, costFactor);
-    const land = FS05F_costBySchedule_(input, 'Tiền SDĐ/thuê đất', t, false, costFactor);
-    const htkt = FS05F_costBySchedule_(input, 'Chi phí HTKT', t, true, costFactor);
-
-    const selling = revenue[t - 1].beforeVat * salesRatio;
-    const contingency = (xd + htkt) * contingencyRatio;
-
-    const vatIn =
-      xd * FS05F_getVatRate_(input, 'Chi phí XD/TB/khác') +
-      gpmb * FS05F_getVatRate_(input, 'Chi phí GPMB') +
-      land * FS05F_getVatRate_(input, 'Tiền SDĐ/thuê đất') +
-      htkt * FS05F_getVatRate_(input, 'Chi phí HTKT') +
-      selling * FS05F_getVatRate_(input, 'Chi phí bán hàng') +
-      contingency * FS05F_getVatRate_(input, 'Chi phí dự phòng');
-
-    const beforeVat = xd + gpmb + land + htkt + selling + contingency;
-    const afterVat = beforeVat + vatIn;
-
-    rows.push({
-      xd,
-      gpmb,
-      land,
-      htkt,
-      selling,
-      contingency,
-      vatIn,
-      beforeVat,
-      afterVat,
-      vatPayable: 0
-    });
-  }
-
-  FS05F_applyVat_(rows, revenue);
-
-  return rows;
-}
-
-function FS05F_costBySchedule_(input, item, month, applyInflation, costFactor) {
-  const total = FS05F_getCostBeforeVat_(input, item) * costFactor;
-  const schedules = input.scheduleRows.filter(r => FS05F_norm_(r.item) === FS05F_norm_(item));
-
-  let out = 0;
-
-  schedules.forEach(s => {
-    const duration = Math.max(1, s.duration);
-
-    if (month >= s.start && month < s.start + duration) {
-      const base = total * s.rate / duration;
-      const infl = applyInflation ? Math.pow(1 + input.cfg.costInflation, (month - 1) / 12) : 1;
-      out += base * infl;
-    }
-  });
-
-  return out;
-}
-
-function FS05F_applyVat_(costRows, revenueRows) {
-  let credit = 0;
-
-  for (let i = 0; i < costRows.length; i++) {
-    const vatOut = revenueRows[i].vatOut;
-    const vatIn = costRows[i].vatIn;
-
-    if (i === costRows.length - 1) {
-      costRows[i].vatPayable = vatOut - credit - vatIn;
-      credit = 0;
-    } else {
-      costRows[i].vatPayable = Math.max(0, vatOut - credit - vatIn);
-      credit = Math.max(0, credit + vatIn - vatOut);
-    }
-  }
-}
-
-/***********************
- * TAX
- ***********************/
-
-function FS05F_computeTax_(input, revenue, cost) {
-  const tax = Array(input.cfg.months).fill(0);
-
-  const totalCost = cost.reduce((s, r) =>
-    s + r.xd + r.gpmb + r.land + r.htkt + r.selling + r.contingency, 0
+  ui.alert(
+    'Đã khởi tạo 363 kịch bản độ nhạy. Mô hình bắt đầu chạy theo lô và tự tiếp tục nếu vượt giới hạn thời gian.'
   );
-
-  const weights = revenue.map(r => Math.max(0, r.beforeVat));
-  const totalWeight = weights.reduce((s, v) => s + v, 0) || 1;
-
-  for (let i = 0; i < input.cfg.months; i++) {
-    const costAlloc = totalCost * weights[i] / totalWeight;
-    const rate = FS05F_avgTaxRateByMonth_(input, i + 1);
-    const taxable = Math.max(0, revenue[i].beforeVat - costAlloc);
-    tax[i] = taxable * rate;
-  }
-
-  return tax;
+  return FS05_tiepTucDoNhay();
 }
 
-function FS05F_avgTaxRateByMonth_(input, month) {
-  let rev = 0;
-  let weightedTax = 0;
+function FS05_tiepTucDoNhay() {
+  const lock = LockService.getDocumentLock();
+  if (!lock.tryLock(30000)) return;
 
-  input.products.forEach(p => {
-    const progress = FS05F_collectProgress_(input.planRows, p.name, month);
-    const form = FS05F_norm_(p.form);
-    let q = 0;
+  const ss = SpreadsheetApp.getActive();
+  const props = PropertiesService.getDocumentProperties();
+  const startedAt = Date.now();
+  let cursor = Number(props.getProperty(FS05_CFG.PROP_CURSOR) || 0);
+  const total = 3 * FS05_CFG.FACTORS.length * FS05_CFG.FACTORS.length;
 
-    if (form.includes('ban')) {
-      q = p.area * p.salePrice * progress;
-    } else if (form.includes('thue')) {
-      q = p.area * p.rentPrice * p.occupancy;
+  try {
+    if (props.getProperty(FS05_CFG.PROP_RUNNING) !== '1') return;
+
+    const tech = ss.getSheetByName(FS05_CFG.TECH);
+    const cache = ss.getSheetByName(FS05_CFG.CACHE);
+    const sheet = ss.getSheetByName(FS05_CFG.SHEET);
+    if (!tech || !cache || !sheet) throw new Error('Thiếu sheet phục vụ chạy độ nhạy.');
+
+    const snapshot = FS05_docDauVao_(tech);
+
+    try {
+      while (cursor < total && Date.now() - startedAt < FS05_CFG.MAX_RUNTIME_MS) {
+        const scenario = FS05_giaiMaKichBan_(cursor);
+        FS05_apDungKichBan_(tech, snapshot, scenario);
+        FS05_chayLaiMoHinh_();
+
+        const kpi = FS05_docKpi_();
+        cache.appendRow([
+          scenario.group,
+          scenario.rowIndex,
+          scenario.colIndex,
+          kpi.npv,
+          kpi.irr,
+          'OK'
+        ]);
+
+        cursor++;
+        props.setProperty(FS05_CFG.PROP_CURSOR, String(cursor));
+        FS05_capNhatTienDo_(sheet, cursor, total);
+      }
+    } finally {
+      FS05_khoiPhucDauVao_(tech, snapshot);
+      FS05_chayLaiMoHinh_();
     }
 
-    rev += q;
-    weightedTax += q * p.taxRate;
-  });
-
-  return rev === 0 ? 0 : weightedTax / rev;
-}
-
-/***********************
- * FCFF / KPI
- ***********************/
-
-function FS05F_computeFCFF_(input, revenue, cost, tax) {
-  const fcff = [];
-
-  for (let i = 0; i < input.cfg.months; i++) {
-    const value =
-      revenue[i].cashInVat -
-      cost[i].afterVat -
-      cost[i].vatPayable -
-      tax[i];
-
-    fcff.push(value);
+    if (cursor >= total) {
+      FS05_ghiKetQua_();
+      props.deleteProperty(FS05_CFG.PROP_CURSOR);
+      props.deleteProperty(FS05_CFG.PROP_RUNNING);
+      FS05_xoaTriggerTiepTuc_();
+      ss.deleteSheet(cache);
+      SpreadsheetApp.getUi().alert('Đã hoàn thành toàn bộ 363 kịch bản độ nhạy.');
+    } else {
+      FS05_taoTriggerTiepTuc_();
+    }
+  } catch (error) {
+    props.deleteProperty(FS05_CFG.PROP_RUNNING);
+    FS05_xoaTriggerTiepTuc_();
+    throw error;
+  } finally {
+    lock.releaseLock();
   }
-
-  return { fcff };
 }
 
-function FS05F_calcKpi_(input, cash) {
-  const monthlyDiscount = Math.pow(1 + input.cfg.discountRate, 1 / 12) - 1;
+function FS05_giaiMaKichBan_(cursor) {
+  const n = FS05_CFG.FACTORS.length;
+  const perGroup = n * n;
+  const groupIndex = Math.floor(cursor / perGroup);
+  const within = cursor % perGroup;
+  const rowIndex = Math.floor(within / n);
+  const colIndex = within % n;
+  const groups = ['SALE_COST', 'RATE_COST', 'RENT_COST'];
 
   return {
-    npvProject: FS05F_npv_(cash.fcff, monthlyDiscount),
-    irrProject: FS05F_annualIrr_(cash.fcff)
+    group: groups[groupIndex],
+    rowIndex,
+    colIndex,
+    costChange: FS05_CFG.FACTORS[rowIndex],
+    horizontalChange: FS05_CFG.FACTORS[colIndex]
   };
 }
 
-function FS05F_npv_(arr, rate) {
-  return arr.reduce((s, v, i) => s + v / Math.pow(1 + rate, i + 1), 0);
+function FS05_docDauVao_(tech) {
+  const productBlock = FS05_timBlock_(tech, 'SAN_PHAM');
+  const costBlock = FS05_timBlock_(tech, 'CHI_PHI_CHUNG');
+  const loanRateCell = FS05_timOThongTin_(tech, 'Lãi suất vay năm');
+  if (!loanRateCell) throw new Error('Không tìm thấy "Lãi suất vay năm" tại 01A. Kỹ thuật.');
+
+  const productRows = tech.getRange(productBlock.startRow, 1, productBlock.rowCount, 14).getValues();
+  const products = productRows.map((row, index) => ({
+    row: productBlock.startRow + index,
+    code: String(row[0] || '').trim(),
+    group: FS05_chuanHoaNhom_(row[2]),
+    salePrice: row[4],
+    rentPrice: row[5]
+  })).filter(item => item.code);
+
+  const costRows = tech.getRange(costBlock.startRow, 1, costBlock.rowCount, 6).getValues();
+  const costs = costRows.map((row, index) => ({
+    row: costBlock.startRow + index,
+    label: String(row[0] || '').trim(),
+    value: row[1],
+    formula: tech.getRange(costBlock.startRow + index, 2).getFormula()
+  })).filter(item => FS05_laChiPhiVonDauTu_(item.label));
+
+  return {
+    products,
+    costs,
+    loanRate: loanRateCell.getValue(),
+    loanRateFormula: loanRateCell.getFormula(),
+    loanRateA1: loanRateCell.getA1Notation()
+  };
 }
 
-function FS05F_annualIrr_(arr) {
-  const r = FS05F_irr_(arr);
-  return r === null ? 0 : Math.pow(1 + r, 12) - 1;
-}
+function FS05_apDungKichBan_(tech, snapshot, scenario) {
+  FS05_khoiPhucDauVao_(tech, snapshot);
 
-function FS05F_irr_(values) {
-  if (!values.some(v => v > 0) || !values.some(v => v < 0)) return null;
+  const costFactor = 1 + scenario.costChange;
+  snapshot.costs.forEach(item => {
+    tech.getRange(item.row, 2).setValue(FS05_so_(item.value) * costFactor);
+  });
 
-  let rate = 0.02;
-
-  for (let i = 0; i < 100; i++) {
-    let f = 0;
-    let df = 0;
-
-    values.forEach((v, idx) => {
-      const t = idx + 1;
-      f += v / Math.pow(1 + rate, t);
-      df += -t * v / Math.pow(1 + rate, t + 1);
+  if (scenario.group === 'SALE_COST') {
+    const factor = 1 + scenario.horizontalChange;
+    snapshot.products.filter(item => item.group === 'Bán').forEach(item => {
+      tech.getRange(item.row, 5).setValue(FS05_so_(item.salePrice) * factor);
     });
-
-    if (Math.abs(df) < 1e-12) break;
-
-    const next = rate - f / df;
-    if (!isFinite(next)) break;
-    if (Math.abs(next - rate) < 1e-8) return next;
-
-    rate = next;
   }
 
-  return rate;
+  if (scenario.group === 'RENT_COST') {
+    const factor = 1 + scenario.horizontalChange;
+    snapshot.products.filter(item => item.group === 'Cho thuê').forEach(item => {
+      tech.getRange(item.row, 6).setValue(FS05_so_(item.rentPrice) * factor);
+    });
+  }
+
+  if (scenario.group === 'RATE_COST') {
+    const newRate = Math.max(0, FS05_tyLe_(snapshot.loanRate) + scenario.horizontalChange);
+    tech.getRange(snapshot.loanRateA1).setValue(newRate);
+  }
+
+  SpreadsheetApp.flush();
 }
 
-/***********************
- * WRITE / FORMAT
- ***********************/
+function FS05_khoiPhucDauVao_(tech, snapshot) {
+  snapshot.products.forEach(item => {
+    tech.getRange(item.row, 5).setValue(item.salePrice);
+    tech.getRange(item.row, 6).setValue(item.rentPrice);
+  });
 
-function FS05F_layout_(sh) {
-  sh.getRange('A1:M1').merge().setValue('05. BẢNG PHÂN TÍCH ĐỘ NHẠY');
-  sh.getRange('A2:M2').merge().setValue('Màu hồng: kết quả thấp hơn Base. Màu trắng: kết quả lớn hơn hoặc bằng Base.');
+  snapshot.costs.forEach(item => {
+    const cell = tech.getRange(item.row, 2);
+    if (item.formula) cell.setFormula(item.formula);
+    else cell.setValue(item.value);
+  });
+
+  const loanCell = tech.getRange(snapshot.loanRateA1);
+  if (snapshot.loanRateFormula) loanCell.setFormula(snapshot.loanRateFormula);
+  else loanCell.setValue(snapshot.loanRate);
+  SpreadsheetApp.flush();
 }
 
-function FS05F_writeBlock_(sh, startRow, title, base, matrix, fmt) {
-  const n = FS05F.REV_FACTORS.length;
-  const m = FS05F.COST_FACTORS.length;
+function FS05_chayLaiMoHinh_() {
+  FS_lapSheet02();
+  FS_lapSheet03();
+  FS_lapSheet03A();
+  FS_lapSheet00();
+  SpreadsheetApp.flush();
+}
+
+function FS05_docKpi_() {
+  const summary = SpreadsheetApp.getActive().getSheetByName(FS05_CFG.SUMMARY);
+  const rows = {
+    npvProject: FS05_timDongChiTieu_(summary, 'NPV dự án'),
+    irrProject: FS05_timDongChiTieu_(summary, 'IRR dự án'),
+    npvEquity: FS05_timDongChiTieu_(summary, 'NPV vốn CSH'),
+    irrEquity: FS05_timDongChiTieu_(summary, 'IRR vốn CSH')
+  };
+
+  Object.keys(rows).forEach(key => {
+    if (!rows[key]) throw new Error('Không tìm thấy chỉ tiêu ' + key + ' trên Sheet 00.');
+  });
+
+  return {
+    project: {
+      npv: FS05_so_(summary.getRange(rows.npvProject, 4).getValue()),
+      irr: FS05_so_(summary.getRange(rows.irrProject, 4).getValue())
+    },
+    equity: {
+      npv: FS05_so_(summary.getRange(rows.npvEquity, 4).getValue()),
+      irr: FS05_so_(summary.getRange(rows.irrEquity, 4).getValue())
+    },
+    get npv() { return 0; },
+    get irr() { return 0; }
+  };
+}
+
+function FS05_ghiKetQua_() {
+  const ss = SpreadsheetApp.getActive();
+  const sheet = ss.getSheetByName(FS05_CFG.SHEET);
+  const cache = ss.getSheetByName(FS05_CFG.CACHE);
+  const summary = ss.getSheetByName(FS05_CFG.SUMMARY);
+  const data = cache.getLastRow() > 1
+    ? cache.getRange(2, 1, cache.getLastRow() - 1, 6).getValues()
+    : [];
+
+  const base = {
+    npvProject: FS05_so_(summary.getRange(FS05_timDongChiTieu_(summary, 'NPV dự án'), 4).getValue()),
+    irrProject: FS05_so_(summary.getRange(FS05_timDongChiTieu_(summary, 'IRR dự án'), 4).getValue()),
+    npvEquity: FS05_so_(summary.getRange(FS05_timDongChiTieu_(summary, 'NPV vốn CSH'), 4).getValue()),
+    irrEquity: FS05_so_(summary.getRange(FS05_timDongChiTieu_(summary, 'IRR vốn CSH'), 4).getValue())
+  };
+
+  const matrices = {};
+  ['SALE_COST', 'RATE_COST', 'RENT_COST'].forEach(group => {
+    matrices[group] = {
+      npv: FS05_maTranRong_(),
+      irr: FS05_maTranRong_()
+    };
+  });
+
+  data.forEach(row => {
+    const group = String(row[0]);
+    const r = Number(row[1]);
+    const c = Number(row[2]);
+    if (!matrices[group]) return;
+    matrices[group].npv[r][c] = FS05_so_(row[3]);
+    matrices[group].irr[r][c] = FS05_so_(row[4]);
+  });
+
+  FS05_ghiBlock_(sheet, 4, 'NPV', 'Tăng/giảm giá bán', base.npvProject, matrices.SALE_COST.npv, '#,##0.0');
+  FS05_ghiBlock_(sheet, 20, 'IRR', 'Tăng/giảm giá bán', base.irrProject, matrices.SALE_COST.irr, '0.0%');
+  FS05_ghiBlock_(sheet, 36, 'NPV VỐN CSH', 'Tăng/giảm lãi suất vay', base.npvEquity, matrices.RATE_COST.npv, '#,##0.0');
+  FS05_ghiBlock_(sheet, 52, 'IRR VỐN CSH', 'Tăng/giảm lãi suất vay', base.irrEquity, matrices.RATE_COST.irr, '0.0%');
+  FS05_ghiBlock_(sheet, 68, 'NPV - GIÁ THUÊ/VỐN ĐẦU TƯ', 'Tăng/giảm giá thuê', base.npvProject, matrices.RENT_COST.npv, '#,##0.0');
+  FS05_ghiBlock_(sheet, 84, 'IRR - GIÁ THUÊ/VỐN ĐẦU TƯ', 'Tăng/giảm giá thuê', base.irrProject, matrices.RENT_COST.irr, '0.0%');
+
+  FS05_dinhDangToanSheet_(sheet);
+  sheet.getRange('O1:P3').clearContent();
+}
+
+function FS05_docKpi_() {
+  const summary = SpreadsheetApp.getActive().getSheetByName(FS05_CFG.SUMMARY);
+  const scenario = FS05_giaiMaKichBan_(Number(PropertiesService.getDocumentProperties().getProperty(FS05_CFG.PROP_CURSOR) || 0));
+  const isEquity = scenario.group === 'RATE_COST';
+  const npvLabel = isEquity ? 'NPV vốn CSH' : 'NPV dự án';
+  const irrLabel = isEquity ? 'IRR vốn CSH' : 'IRR dự án';
+  const npvRow = FS05_timDongChiTieu_(summary, npvLabel);
+  const irrRow = FS05_timDongChiTieu_(summary, irrLabel);
+  if (!npvRow || !irrRow) throw new Error('Không tìm thấy NPV/IRR cần đọc trên Sheet 00.');
+  return {
+    npv: FS05_so_(summary.getRange(npvRow, 4).getValue()),
+    irr: FS05_so_(summary.getRange(irrRow, 4).getValue())
+  };
+}
+
+function FS05_taoKhung_(sheet) {
+  sheet.getRange(1, 1, Math.max(sheet.getMaxRows(), 100), 16).breakApart();
+  sheet.clear();
+  sheet.clearFormats();
+  sheet.getRange('A1:M1').merge().setValue('05. BẢNG PHÂN TÍCH ĐỘ NHẠY');
+  sheet.getRange('A2:M2').merge().setValue('Màu hồng: kết quả thấp hơn Base. Màu trắng: kết quả lớn hơn hoặc bằng Base.');
+  sheet.getRange('O1').setValue('Đang chạy');
+  sheet.getRange('P1').setValue('0/363');
+  FS05_dinhDangToanSheet_(sheet);
+}
+
+function FS05_ghiBlock_(sheet, startRow, title, horizontalTitle, base, matrix, numberFormat) {
+  const n = FS05_CFG.FACTORS.length;
   const centerRow = startRow + 8;
   const centerCol = 8;
 
-  sh.getRange(startRow, 2)
-    .setValue(title)
-    .setFontWeight('bold')
-    .setFontSize(12)
-    .setHorizontalAlignment('center');
+  sheet.getRange(startRow, 1, 1, 13)
+    .setBackground(FS05_CFG.COLOR_SECTION)
+    .setFontWeight('bold');
+  sheet.getRange(startRow, 2).setValue(title).setFontWeight('bold').setFontSize(12);
 
-  sh.getRange(startRow + 1, 3, 1, n)
+  sheet.getRange(startRow + 1, 3, 1, n)
     .merge()
-    .setValue('Tăng/giảm giá bán')
-    .setFontWeight('bold')
-    .setHorizontalAlignment('center');
+    .setValue(horizontalTitle)
+    .setFontWeight('bold');
 
-  sh.getRange(startRow + 2, 2)
+  sheet.getRange(startRow + 2, 2)
     .setValue(base)
-    .setNumberFormat(fmt)
-    .setBackground(FS05F.COLOR_BASE)
+    .setNumberFormat(numberFormat)
+    .setBackground(FS05_CFG.COLOR_BASE)
     .setFontColor('#FFFFFF')
-    .setFontWeight('bold')
-    .setHorizontalAlignment('right');
+    .setFontWeight('bold');
 
-  sh.getRange(startRow + 2, 3, 1, n)
-    .setValues([FS05F.REV_FACTORS])
-    .setNumberFormat('0%')
-    .setBackground(FS05F.COLOR_HEADER)
+  sheet.getRange(startRow + 2, 3, 1, n)
+    .setValues([FS05_CFG.FACTORS])
+    .setNumberFormat('0.0%')
+    .setBackground(FS05_CFG.COLOR_HEADER)
     .setFontColor('#FFFFFF')
-    .setFontWeight('bold')
-    .setHorizontalAlignment('center');
+    .setFontWeight('bold');
 
-  sh.getRange(startRow + 3, 1, m, 1)
+  sheet.getRange(startRow + 3, 1, n, 1)
     .merge()
     .setValue('Tăng/giảm\nvốn đầu tư')
     .setFontWeight('bold')
-    .setHorizontalAlignment('center')
-    .setVerticalAlignment('middle')
     .setWrap(true);
 
-  sh.getRange(startRow + 3, 2, m, 1)
-    .setValues(FS05F.COST_FACTORS.map(x => [x]))
-    .setNumberFormat('0%')
-    .setFontWeight('bold')
-    .setHorizontalAlignment('center');
+  sheet.getRange(startRow + 3, 2, n, 1)
+    .setValues(FS05_CFG.FACTORS.map(value => [value]))
+    .setNumberFormat('0.0%')
+    .setFontWeight('bold');
 
-  sh.getRange(startRow + 3, 3, m, n)
-    .setValues(matrix)
-    .setNumberFormat(fmt)
-    .setHorizontalAlignment('right');
+  const resultRange = sheet.getRange(startRow + 3, 3, n, n);
+  resultRange.setValues(matrix).setNumberFormat(numberFormat);
 
-  sh.getRange(startRow + 2, 2, m + 1, n + 1)
+  const backgrounds = matrix.map(row => row.map(value =>
+    FS05_so_(value) < FS05_so_(base) ? FS05_CFG.COLOR_LOW : FS05_CFG.COLOR_WHITE
+  ));
+  resultRange.setBackgrounds(backgrounds);
+
+  sheet.getRange(startRow + 2, 2, n + 1, n + 1)
+    .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
+  sheet.getRange(startRow + 3, 1, n, n + 2)
     .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
 
-  sh.getRange(startRow + 3, 1, m, n + 2)
-    .setBorder(true, true, true, true, true, true, '#000000', SpreadsheetApp.BorderStyle.SOLID);
-
-  FS05F_colorByBase_(sh, startRow);
-
-  sh.getRange(centerRow, centerCol)
-    .setBackground(FS05F.COLOR_CENTER)
+  sheet.getRange(centerRow, centerCol)
+    .setBackground(FS05_CFG.COLOR_CENTER)
     .setFontWeight('bold')
     .setBorder(true, true, true, true, true, true, '#FF0000', SpreadsheetApp.BorderStyle.SOLID_MEDIUM);
 }
 
-function FS05F_colorByBase_(sh, startRow) {
-  const base = Number(sh.getRange(startRow + 2, 2).getValue()) || 0;
-
-  const range = sh.getRange(
-    startRow + 3,
-    3,
-    FS05F.COST_FACTORS.length,
-    FS05F.REV_FACTORS.length
-  );
-
-  const values = range.getValues();
-
-  const backgrounds = values.map(row =>
-    row.map(v => Number(v) < base ? FS05F.COLOR_LOW : FS05F.COLOR_WHITE)
-  );
-
-  range.setBackgrounds(backgrounds);
-}
-
-function FS05F_format_(sh) {
-  const lastRow = 33;
-  const lastCol = 13;
-
-  sh.getRange(1, 1, lastRow, lastCol)
+function FS05_dinhDangToanSheet_(sheet) {
+  const lastRow = 97;
+  sheet.getRange(1, 1, lastRow, 13)
     .setFontFamily('Times New Roman')
     .setFontSize(10)
     .setVerticalAlignment('middle')
     .setHorizontalAlignment('center');
 
-  sh.getRange('A1:M1')
+  sheet.getRange('A1:M1')
     .setFontSize(14)
     .setFontWeight('bold')
     .setFontColor('#FFFFFF')
-    .setBackground(FS05F.COLOR_TITLE);
+    .setBackground('#1F4E78');
+  sheet.getRange('A2:M2').setFontStyle('italic').setBackground('#D9EAF7');
 
-  sh.getRange('A2:M2')
-    .setFontStyle('italic')
-    .setBackground('#D9EAF7');
-
-  [4, 20].forEach(r => {
-    sh.getRange(r, 1, 1, lastCol)
-      .setBackground(FS05F.COLOR_SECTION)
-      .setFontWeight('bold');
-  });
-
-  sh.setColumnWidth(1, 90);
-  sh.setColumnWidth(2, 90);
-  for (let c = 3; c <= 13; c++) sh.setColumnWidth(c, 90);
-
-  sh.setFrozenRows(2);
+  sheet.setColumnWidth(1, 90);
+  sheet.setColumnWidth(2, 90);
+  for (let col = 3; col <= 13; col++) sheet.setColumnWidth(col, 82);
+  sheet.setFrozenRows(2);
 }
 
-/***********************
- * HELPERS
- ***********************/
+function FS05_capNhatTienDo_(sheet, current, total) {
+  sheet.getRange('O1').setValue('Đang chạy');
+  sheet.getRange('P1').setValue(current + '/' + total);
+  SpreadsheetApp.flush();
+}
 
-function FS05F_getBlockInfo_(sheet, blockName) {
-  const blockRow = FS05F_findRow_(sheet, blockName);
-  if (!blockRow) throw new Error(`Không tìm thấy block ${blockName}`);
+function FS05_taoTriggerTiepTuc_() {
+  FS05_xoaTriggerTiepTuc_();
+  ScriptApp.newTrigger('FS05_tiepTucDoNhay').timeBased().after(60000).create();
+}
 
-  const startRow = blockRow + 2;
-  let endRow = startRow;
-  let blank = 0;
+function FS05_xoaTriggerTiepTuc_() {
+  ScriptApp.getProjectTriggers().forEach(trigger => {
+    if (trigger.getHandlerFunction() === 'FS05_tiepTucDoNhay') ScriptApp.deleteTrigger(trigger);
+  });
+}
 
-  for (let r = startRow; r <= sheet.getLastRow(); r++) {
-    const firstCol = String(sheet.getRange(r, 1).getDisplayValue() || '').trim();
-
-    if (['CHI_PHI_CHUNG', 'SAN_PHAM', 'KE_HOACH_BAN_THU_TIEN', 'TIEN_DO_CHI_PHI'].includes(firstCol)) break;
-
-    if (!firstCol) {
-      blank++;
-      if (blank >= 3) {
-        endRow = r - blank;
-        break;
-      }
-    } else {
-      blank = 0;
-      endRow = r;
+function FS05_timBlock_(sheet, blockName) {
+  const values = sheet.getDataRange().getDisplayValues();
+  const target = FS05_key_(blockName);
+  let blockRow = 0;
+  for (let row = 0; row < values.length; row++) {
+    if (values[row].some(value => FS05_key_(value) === target)) {
+      blockRow = row + 1;
+      break;
     }
   }
+  if (!blockRow) throw new Error('Không tìm thấy block ' + blockName + ' tại 01A. Kỹ thuật.');
 
-  return {
-    blockRow,
-    startRow,
-    endRow,
-    rowCount: Math.max(0, endRow - startRow + 1)
-  };
+  const startRow = blockRow + 2;
+  let endRow = startRow - 1;
+  for (let row = startRow; row <= sheet.getLastRow(); row++) {
+    const first = String(sheet.getRange(row, 1).getDisplayValue() || '').trim();
+    if (row > startRow && /^[A-Z_]+$/.test(first)) break;
+    if (!first) {
+      if (endRow >= startRow) break;
+      continue;
+    }
+    endRow = row;
+  }
+  return { startRow, rowCount: Math.max(0, endRow - startRow + 1) };
 }
 
-function FS05F_findRow_(sheet, text) {
-  const data = sheet.getDataRange().getDisplayValues();
-  const target = FS05F_norm_(text);
-
-  for (let r = 0; r < data.length; r++) {
-    if (data[r].some(v => FS05F_norm_(v) === target)) return r + 1;
+function FS05_timOThongTin_(sheet, label) {
+  const target = FS05_key_(label);
+  const values = sheet.getDataRange().getDisplayValues();
+  for (let row = 0; row < values.length; row++) {
+    if (FS05_key_(values[row][0]) === target) return sheet.getRange(row + 1, 2);
   }
-
   return null;
 }
 
-function FS05F_getInfoValue_(sheet, label) {
-  const row = FS05F_findRow_(sheet, label);
-  return row ? sheet.getRange(row, 2).getValue() : '';
+function FS05_timDongChiTieu_(sheet, label) {
+  const target = FS05_key_(label);
+  const values = sheet.getRange(1, 2, sheet.getLastRow(), 1).getDisplayValues();
+  for (let row = 0; row < values.length; row++) {
+    if (FS05_key_(values[row][0]) === target) return row + 1;
+  }
+  return 0;
 }
 
-function FS05F_getCostBeforeVat_(input, item) {
-  const r = input.cpRows.find(x => FS05F_norm_(x.name) === FS05F_norm_(item));
-  return r ? r.beforeVat : 0;
+function FS05_laChiPhiVonDauTu_(label) {
+  const key = FS05_key_(label);
+  if (!key || key.includes('tongmucdautu')) return false;
+  return [
+    'chiphixdtbkhac',
+    'chiphixdtb',
+    'chiphigpmb',
+    'tiensdd',
+    'tienthuedat',
+    'chiphihtkt'
+  ].some(token => key.includes(token));
 }
 
-function FS05F_getVatRate_(input, item) {
-  const r = input.cpRows.find(x => FS05F_norm_(x.name) === FS05F_norm_(item));
-  return r ? r.vatRate : 0;
+function FS05_chuanHoaNhom_(value) {
+  const key = FS05_key_(value);
+  if (key === 'ban') return 'Bán';
+  if (key === 'chothue' || key === 'thue') return 'Cho thuê';
+  return String(value || '').trim();
 }
 
-function FS05F_getCostRatio_(input, item) {
-  const r = input.cpRows.find(x => FS05F_norm_(x.name) === FS05F_norm_(item));
-  return r ? r.ratio : 0;
+function FS05_maTranRong_() {
+  return FS05_CFG.FACTORS.map(() => FS05_CFG.FACTORS.map(() => 0));
 }
 
-function FS05F_percent_(v) {
-  if (typeof v === 'number') return v > 1 ? v / 100 : v;
-  const s = String(v || '').replace('%', '').replace(',', '.').trim();
-  const n = Number(s);
-  if (!isFinite(n)) return 0;
-  return n > 1 ? n / 100 : n;
+function FS05_getOrCreateSheet_(ss, name) {
+  return ss.getSheetByName(name) || ss.insertSheet(name);
 }
 
-function FS05F_norm_(v) {
-  return String(v || '')
+function FS05_tyLe_(value) {
+  const number = FS05_so_(value);
+  return Math.abs(number) > 1 ? number / 100 : number;
+}
+
+function FS05_so_(value) {
+  if (typeof value === 'number') return isFinite(value) ? value : 0;
+  const text = String(value == null ? '' : value).trim().replace(/\s/g, '');
+  if (!text) return 0;
+  const normalized = text.includes(',') && text.includes('.')
+    ? text.replace(/\./g, '').replace(',', '.')
+    : text.replace(/,/g, '');
+  const number = Number(normalized);
+  return isFinite(number) ? number : 0;
+}
+
+function FS05_key_(value) {
+  return String(value == null ? '' : value)
     .toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/đ/g, 'd')
-    .replace(/\s+/g, ' ')
-    .trim();
+    .replace(/[^a-z0-9]/g, '');
 }
-
