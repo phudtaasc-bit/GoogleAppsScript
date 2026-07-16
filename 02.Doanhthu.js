@@ -26,6 +26,7 @@ function FS_lapSheet02() {
       salePrice: FS02_num_(row[4]),
       rentPrice: FS02_num_(row[5]),
       vatRate: FS02_rate_(row[7]),
+      citRate: FS02_rate_(row[8]),
       occupancy: FS02_rate_(row[9])
     }))
     .filter(product => product.code || product.name);
@@ -59,22 +60,18 @@ function FS_lapSheet02() {
 
     products.forEach(product => {
       const key = product.code + '|' + monthNo;
-
       const collectionProgress = product.group === 'Bán'
         ? (plansByStartMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0)
         : (plansByActiveMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0);
 
       const salePrice = product.salePrice * priceFactor;
       const rentPrice = product.rentPrice * priceFactor;
-
       const saleRevenue = product.group === 'Bán'
         ? product.area * salePrice * collectionProgress
         : 0;
-
       const rentRevenue = product.group === 'Cho thuê'
         ? product.area * rentPrice * product.occupancy * collectionProgress
         : 0;
-
       const totalRevenue = saleRevenue + rentRevenue;
       const vatOut = totalRevenue * product.vatRate;
 
@@ -95,6 +92,7 @@ function FS_lapSheet02() {
         rentRevenue,
         totalRevenue,
         product.vatRate,
+        product.citRate,
         vatOut,
         totalRevenue + vatOut
       ]);
@@ -106,15 +104,15 @@ function FS_lapSheet02() {
   sheet.clear();
   sheet.clearFormats();
 
-  sheet.getRange(1, 1, 1, 18).setValues([[
+  sheet.getRange(1, 1, 1, 19).setValues([[
     'Tháng số', 'Tháng', 'Năm', 'Quý', 'Mã SP', 'Tên sản phẩm', 'Nhóm',
     'DTKD (m²)', 'Giá bán trước thuế/m²', 'Giá thuê/m²/tháng',
     'Tỷ lệ lấp đầy', 'Tiến độ thu tiền', 'Doanh thu bán trước VAT',
     'Doanh thu thuê trước VAT', 'Tổng doanh thu trước VAT',
-    'Thuế suất VAT', 'VAT đầu ra', 'Dòng tiền khách hàng'
+    'Thuế suất VAT', 'Thuế suất TNDN', 'VAT đầu ra', 'Dòng tiền khách hàng'
   ]]);
 
-  if (rows.length) sheet.getRange(2, 1, rows.length, 18).setValues(rows);
+  if (rows.length) sheet.getRange(2, 1, rows.length, 19).setValues(rows);
   FS02_format_(sheet, rows.length + 1);
 }
 
@@ -284,7 +282,7 @@ function FS02_format_(sheet, endRow) {
   sheet.setFrozenRows(1);
   sheet.setFrozenColumns(7);
 
-  sheet.getRange(1, 1, 1, 18)
+  sheet.getRange(1, 1, 1, 19)
     .setFontWeight('bold')
     .setBackground('#d9eaf7')
     .setWrap(true)
@@ -296,11 +294,11 @@ function FS02_format_(sheet, endRow) {
     sheet.getRange(2, 8, rowCount, 3).setNumberFormat('#,##0');
     sheet.getRange(2, 11, rowCount, 2).setNumberFormat('0.00%');
     sheet.getRange(2, 13, rowCount, 3).setNumberFormat('#,##0');
-    sheet.getRange(2, 16, rowCount, 1).setNumberFormat('0.00%');
-    sheet.getRange(2, 17, rowCount, 2).setNumberFormat('#,##0');
+    sheet.getRange(2, 16, rowCount, 2).setNumberFormat('0.00%');
+    sheet.getRange(2, 18, rowCount, 2).setNumberFormat('#,##0');
   }
 
-  const widths = [70, 85, 65, 90, 70, 180, 90, 95, 145, 145, 105, 115, 150, 150, 155, 105, 120, 150];
+  const widths = [70, 85, 65, 90, 70, 180, 90, 95, 145, 145, 105, 115, 150, 150, 155, 105, 115, 120, 150];
   widths.forEach((width, index) => sheet.setColumnWidth(index + 1, width));
   sheet.setRowHeight(1, 42);
 }
