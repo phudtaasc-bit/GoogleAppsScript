@@ -1,7 +1,8 @@
 const FS03_CFG = Object.freeze({
   TECH: '01A. Kỹ thuật',
   REVENUE: '02. Doanh thu',
-  COST: '03. Chi phí & Vốn'
+  COST: '03. Chi phí & Vốn',
+  DEFAULT_VAT_RATE: 0.08
 });
 
 function FS_lapSheet03() {
@@ -24,10 +25,10 @@ function FS_lapSheet03() {
   if (totalArea <= 0) throw new Error('Tổng DTKD của danh mục sản phẩm phải lớn hơn 0.');
 
   const costMap = FS03_readCostMap_(tech);
+  const costItems = FS03_buildCostItems_(costMap);
   const schedules = FS03_readSchedules_(tech);
   const revenueRows = FS03_readRevenueRows_(revenueSheet, productByCode);
 
-  const costItems = FS03_buildCostItems_(costMap);
   FS03_validateLandCostStructure_(costMap);
 
   const scheduledByItemMonth = FS03_indexScheduledCosts_(costItems, schedules, months);
@@ -43,11 +44,9 @@ function FS_lapSheet03() {
       const construction = FS03_scheduled_(scheduledByItemMonth, 'construction', monthNo) * areaShare;
       const clearance = FS03_scheduled_(scheduledByItemMonth, 'clearance', monthNo) * areaShare;
       const infrastructure = FS03_scheduled_(scheduledByItemMonth, 'infrastructure', monthNo) * areaShare;
-
       const landUse = product.code === 'LK'
         ? FS03_scheduled_(scheduledByItemMonth, 'landUseLK', monthNo)
         : 0;
-
       const landRent = FS03_landRentForProduct_(product.code, scheduledByItemMonth, monthNo);
       const selling = product.group === 'Bán'
         ? revenue.saleRevenue * costItems.selling.rate
@@ -71,8 +70,8 @@ function FS_lapSheet03() {
         landUse * costItems.landUseLK.vatRate +
         landRent * FS03_landRentVatRate_(product.code, costItems) +
         selling * costItems.selling.vatRate +
-        operating * FS03_productVatRate_(costMap, 'Chi phí vận hành') +
-        maintenance * FS03_productVatRate_(costMap, 'Chi phí bảo trì') +
+        operating * costItems.operating.vatRate +
+        maintenance * costItems.maintenance.vatRate +
         contingency * costItems.contingency.vatRate;
 
       rows.push([
@@ -168,6 +167,37 @@ function FS03_readCostMap_(sheet) {
   return map;
 }
 
+function FS03_buildCostItems_(costMap) {
+  return {
+    construction: FS03_cost_(costMap, ['Chi phí XD/TB/khác', 'Chi phí xây dựng & thiết bị', 'Chi phí XD/TB']),
+    clearance: FS03_cost_(costMap, ['Chi phí GPMB']),
+    infrastructure: FS03_cost_(costMap, ['Chi phí HTKT']),
+    landUseLK: FS03_cost_(costMap, ['Tiền SDĐ Liền kề', 'Tiền SDD Liền kề']),
+    landRentCC: FS03_cost_(costMap, ['Tiền thuê đất Chung cư']),
+    landRentTMDV: FS03_cost_(costMap, ['Tiền thuê đất TMDV']),
+    landRentCHO: FS03_cost_(costMap, ['Tiền thuê đất Chợ']),
+    selling: FS03_cost_(costMap, ['Chi phí bán hàng']),
+    operating: FS03_cost_(costMap, ['Chi phí vận hành']),
+    maintenance: FS03_cost_(costMap, ['Chi phí bảo trì']),
+    contingency: FS03_cost_(costMap, ['Chi phí dự phòng'])
+  };
+}
+
+function FS03_cost_(costMap, aliases) {
+  for (const alias of aliases) {
+    const item = costMap[FS03_key_(alias)];
+    if (item) return item;
+  }
+  return {
+    name: aliases[0],
+    beforeVat: 0,
+    vatRate: FS03_CFG.DEFAULT_VAT_RATE,
+    afterVat: 0,
+    note: 'Mặc định VAT đầu vào 8%',
+    rate: 0
+  };
+}
+
 function FS03_readSchedules_(sheet) {
   return FS03_readBlock_(sheet, 'TIEN_DO_CHI_PHI')
     .map(row => ({
@@ -185,7 +215,8 @@ function FS03_readRevenueRows_(sheet, productByCode) {
 
   const headers = sheet.getRange(1, 1, 1, sheet.getLastColumn()).getDisplayValues()[0];
   const values = sheet.getRange(2, 1, sheet.getLastRow() - 1, sheet.getLastColumn()).getValues();
-  const index = FS03_headerIndex_(headers);
+  const index = {};
+  headers.forEach((header, position) => { index[FS03_key_(header)] = position; });
 
   const required = [
     'thangso', 'thang', 'nam', 'quy', 'masp',
@@ -198,7 +229,6 @@ function FS03_readRevenueRows_(sheet, productByCode) {
   return values.map(row => {
     const code = String(row[index.masp] || '').trim().toUpperCase();
     if (!productByCode[code]) throw new Error('Sheet 02 có Mã SP không tồn tại trong SAN_PHAM: ' + code);
-
     return {
       monthNo: FS03_num_(row[index.thangso]),
       date: row[index.thang],
@@ -213,67 +243,33 @@ function FS03_readRevenueRows_(sheet, productByCode) {
   });
 }
 
-function FS03_headerIndex_(headers) {
-  const index = {};
-  headers.forEach((header, position) => { index[FS03_key_(header)] = position; });
-  return index;
-}
-
-function FS03_buildCostItems_(costMap) {
-  return {
-    construction: FS03_cost_(costMap, ['Chi phí XD/TB/khác', 'Chi phí xây dựng & thiết bị', 'Chi phí XD/TB']),
-    clearance: FS03_cost_(costMap, ['Chi phí GPMB']),
-    infrastructure: FS03_cost_(costMap, ['Chi phí HTKT']),
-    landUseLK: FS03_cost_(costMap, ['Tiền SDĐ Liền kề', 'Tiền SDD Liền kề']),
-    landRentCC: FS03_cost_(costMap, ['Tiền thuê đất Chung cư']),
-    landRentTMDV: FS03_cost_(costMap, ['Tiền thuê đất TMDV']),
-    landRentCHO: FS03_cost_(costMap, ['Tiền thuê đất Chợ']),
-    selling: FS03_cost_(costMap, ['Chi phí bán hàng']),
-    contingency: FS03_cost_(costMap, ['Chi phí dự phòng'])
-  };
-}
-
-function FS03_cost_(costMap, aliases) {
-  for (const alias of aliases) {
-    const item = costMap[FS03_key_(alias)];
-    if (item) return item;
-  }
-  return { name: aliases[0], beforeVat: 0, vatRate: 0, afterVat: 0, note: '', rate: 0 };
-}
-
 function FS03_validateLandCostStructure_(costMap) {
   const legacyKeys = ['Tiền SDĐ/Thuê đất', 'Tiền SDĐ/thuê đất', 'Tiền sử dụng đất/thuê đất'];
   const legacy = legacyKeys.some(name => costMap[FS03_key_(name)] && costMap[FS03_key_(name)].beforeVat !== 0);
-  if (legacy) {
-    throw new Error('CHI_PHI_CHUNG còn khoản mục tiền đất gộp. Phải tách theo từng sản phẩm trước khi lập Sheet 03.');
-  }
+  if (legacy) throw new Error('CHI_PHI_CHUNG còn khoản mục tiền đất gộp. Phải tách theo từng sản phẩm.');
 }
 
 function FS03_indexScheduledCosts_(items, schedules, months) {
   const index = {};
-
   Object.keys(items).forEach(itemKey => {
     const item = items[itemKey];
     if (!item.beforeVat) return;
-
     const matched = schedules.filter(schedule => FS03_key_(schedule.item) === FS03_key_(item.name));
+
     matched.forEach(schedule => {
       const isOneTime = FS03_norm_(schedule.type).includes('mot lan');
       const end = Math.min(months, schedule.start + schedule.duration - 1);
-
       if (isOneTime) {
         const key = itemKey + '|' + schedule.start;
         index[key] = (index[key] || 0) + item.beforeVat * schedule.rate;
         return;
       }
-
       for (let monthNo = schedule.start; monthNo <= end; monthNo++) {
         const key = itemKey + '|' + monthNo;
         index[key] = (index[key] || 0) + item.beforeVat * schedule.rate / schedule.duration;
       }
     });
   });
-
   return index;
 }
 
@@ -303,11 +299,6 @@ function FS03_landRentVatRate_(code, items) {
   if (code === 'TMDV') return items.landRentTMDV.vatRate;
   if (code === 'CHO') return items.landRentCHO.vatRate;
   return 0;
-}
-
-function FS03_productVatRate_(costMap, name) {
-  const item = costMap[FS03_key_(name)];
-  return item ? item.vatRate : 0;
 }
 
 function FS03_emptyRevenue_(monthNo, product) {
@@ -355,17 +346,14 @@ function FS03_readBlock_(sheet, marker) {
     const first = String(current[0] || '').trim();
     const hasData = current.some(value => String(value == null ? '' : value).trim() !== '');
     const nextBlock = /^[A-Z0-9_]+$/.test(first) && first.includes('_');
-
     if (nextBlock) break;
     if (!hasData) {
       if (++blanks >= 2) break;
       continue;
     }
-
     blanks = 0;
     rows.push(current);
   }
-
   return rows;
 }
 
