@@ -42,7 +42,10 @@ function FS_lapSheet02() {
     }))
     .filter(plan => plan.code && productCodes.has(plan.code));
 
-  const plansByCodeMonth = FS02_indexPlans_(plans, months);
+  FS02_validateSalePlans_(products, plans);
+
+  const plansByStartMonth = FS02_indexPlansByStart_(plans, months);
+  const plansByActiveMonth = FS02_indexPlansByActiveMonth_(plans, months);
   const rows = [];
 
   for (let monthNo = 1; monthNo <= months; monthNo++) {
@@ -50,19 +53,25 @@ function FS_lapSheet02() {
     const priceFactor = Math.pow(1 + annualGrowth, (monthNo - 1) / 12);
 
     products.forEach(product => {
-      const activePlans = plansByCodeMonth[product.code + '|' + monthNo] || [];
-      const progress = product.group === 'Bán'
-        ? activePlans.reduce((sum, plan) => sum + plan.rate / plan.duration, 0)
-        : activePlans.reduce((sum, plan) => sum + plan.rate, 0);
+      const key = product.code + '|' + monthNo;
+
+      // Sản phẩm bán: ghi nhận đúng tỷ lệ của đợt thu tiền tại tháng bắt đầu.
+      // Không chia tỷ lệ cho "Thời gian", tránh làm sai tiến độ thu tiền đầu vào.
+      const collectionProgress = product.group === 'Bán'
+        ? (plansByStartMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0)
+        : (plansByActiveMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0);
 
       const salePrice = product.salePrice * priceFactor;
       const rentPrice = product.rentPrice * priceFactor;
+
       const saleRevenue = product.group === 'Bán'
-        ? product.area * salePrice * progress
+        ? product.area * salePrice * collectionProgress
         : 0;
+
       const rentRevenue = product.group === 'Cho thuê'
-        ? product.area * rentPrice * product.occupancy * progress
+        ? product.area * rentPrice * product.occupancy * collectionProgress
         : 0;
+
       const totalRevenue = saleRevenue + rentRevenue;
       const vatOut = totalRevenue * product.vatRate;
 
@@ -78,7 +87,7 @@ function FS_lapSheet02() {
         salePrice,
         rentPrice,
         product.occupancy,
-        progress,
+        collectionProgress,
         saleRevenue,
         rentRevenue,
         totalRevenue,
@@ -97,7 +106,7 @@ function FS_lapSheet02() {
   sheet.getRange(1, 1, 1, 18).setValues([[
     'Tháng số', 'Tháng', 'Năm', 'Quý', 'Mã SP', 'Tên sản phẩm', 'Nhóm',
     'DTKD (m²)', 'Giá bán trước thuế/m²', 'Giá thuê/m²/tháng',
-    'Tỷ lệ lấp đầy', 'Tiến độ doanh thu', 'Doanh thu bán trước VAT',
+    'Tỷ lệ lấp đầy', 'Tiến độ thu tiền', 'Doanh thu bán trước VAT',
     'Doanh thu thuê trước VAT', 'Tổng doanh thu trước VAT',
     'Thuế suất VAT', 'VAT đầu ra', 'Dòng tiền khách hàng'
   ]]);
@@ -172,13 +181,46 @@ function FS02_validateProducts_(products) {
   const invalidGroups = products
     .filter(product => product.group !== 'Bán' && product.group !== 'Cho thuê')
     .map(product => product.code + ': ' + product.group);
+
   if (invalidGroups.length) {
     throw new Error('Nhóm sản phẩm chỉ được là "Bán" hoặc "Cho thuê": ' + invalidGroups.join('; '));
   }
 }
 
-function FS02_indexPlans_(plans, months) {
+function FS02_validateSalePlans_(products, plans) {
+  const saleCodes = new Set(products.filter(product => product.group === 'Bán').map(product => product.code));
+  const totals = {};
+
+  plans.forEach(plan => {
+    if (!saleCodes.has(plan.code)) return;
+    totals[plan.code] = (totals[plan.code] || 0) + plan.rate;
+  });
+
+  const invalid = Object.keys(totals)
+    .filter(code => totals[code] > 1.000001)
+    .map(code => code + ': ' + (totals[code] * 100).toFixed(2) + '%');
+
+  if (invalid.length) {
+    throw new Error('Tổng tiến độ thu tiền của sản phẩm bán vượt 100%: ' + invalid.join('; '));
+  }
+}
+
+function FS02_indexPlansByStart_(plans, months) {
   const index = {};
+
+  plans.forEach(plan => {
+    if (plan.start > months) return;
+    const key = plan.code + '|' + plan.start;
+    if (!index[key]) index[key] = [];
+    index[key].push(plan);
+  });
+
+  return index;
+}
+
+function FS02_indexPlansByActiveMonth_(plans, months) {
+  const index = {};
+
   plans.forEach(plan => {
     const endMonth = Math.min(months, plan.start + plan.duration - 1);
     for (let monthNo = plan.start; monthNo <= endMonth; monthNo++) {
@@ -187,6 +229,7 @@ function FS02_indexPlans_(plans, months) {
       index[key].push(plan);
     }
   });
+
   return index;
 }
 
@@ -198,9 +241,11 @@ function FS02_num_(value) {
   if (typeof value === 'number') return isFinite(value) ? value : 0;
   const text = String(value == null ? '' : value).trim().replace(/\s/g, '');
   if (!text) return 0;
+
   const normalized = text.indexOf(',') >= 0 && text.indexOf('.') >= 0
     ? text.replace(/\./g, '').replace(',', '.')
     : text.replace(/,/g, '');
+
   const number = Number(normalized);
   return isFinite(number) ? number : 0;
 }
@@ -209,6 +254,7 @@ function FS02_rate_(value) {
   if (typeof value === 'number') return value > 1 ? value / 100 : value;
   const text = String(value == null ? '' : value).trim();
   if (!text) return 0;
+
   const number = FS02_num_(text.replace('%', ''));
   return text.indexOf('%') >= 0 || number > 1 ? number / 100 : number;
 }
@@ -234,6 +280,7 @@ function FS02_key_(value) {
 function FS02_format_(sheet, endRow) {
   sheet.setFrozenRows(1);
   sheet.setFrozenColumns(7);
+
   sheet.getRange(1, 1, 1, 18)
     .setFontWeight('bold')
     .setBackground('#d9eaf7')
