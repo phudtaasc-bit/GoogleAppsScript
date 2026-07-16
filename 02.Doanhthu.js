@@ -35,12 +35,17 @@ function FS_lapSheet02() {
   const productCodes = new Set(products.map(product => product.code));
   const plans = FS02_readBlock_(tech, 'KE_HOACH_BAN_THU_TIEN')
     .map(row => ({
+      planGroup: FS02_key_(row[0]),
       code: String(row[1] || '').trim().toUpperCase(),
       start: Math.max(1, FS02_num_(row[4])),
       duration: Math.max(1, FS02_num_(row[5])),
       rate: FS02_rate_(row[6])
     }))
-    .filter(plan => plan.code && productCodes.has(plan.code));
+    .filter(plan =>
+      plan.planGroup === 'thutien' &&
+      plan.code &&
+      productCodes.has(plan.code)
+    );
 
   FS02_validateSalePlans_(products, plans);
 
@@ -55,8 +60,6 @@ function FS_lapSheet02() {
     products.forEach(product => {
       const key = product.code + '|' + monthNo;
 
-      // Sản phẩm bán: ghi nhận đúng tỷ lệ của đợt thu tiền tại tháng bắt đầu.
-      // Không chia tỷ lệ cho "Thời gian", tránh làm sai tiến độ thu tiền đầu vào.
       const collectionProgress = product.group === 'Bán'
         ? (plansByStartMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0)
         : (plansByActiveMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0);
