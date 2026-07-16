@@ -21,8 +21,60 @@ function FS_capNhatKyThuat() {
   FS_taoKyThuatTuDauVao();
   const ss = SpreadsheetApp.getActive();
   const legacy = ss.getSheetByName(FS_CFG.SHEETS.TECH_LEGACY);
-  const current = ss.getSheetByName(FS_CFG.SHEETS.TECH);
-  if (legacy && !current) legacy.setName(FS_CFG.SHEETS.TECH);
+  let current = ss.getSheetByName(FS_CFG.SHEETS.TECH);
+  if (legacy && !current) {
+    legacy.setName(FS_CFG.SHEETS.TECH);
+    current = legacy;
+  }
+  current = current || ss.getSheetByName(FS_CFG.SHEETS.TECH);
+  if (current) FS_dongBoThongTinSanPhamBoSung_(ss, current);
+}
+
+function FS_dongBoThongTinSanPhamBoSung_(ss, tech) {
+  const input = ss.getSheetByName(FS_CFG.SHEETS.INPUT);
+  if (!input || typeof FS_getTable_ !== 'function' || typeof FS_getByHeaderAny_ !== 'function') return;
+
+  const table = FS_getTable_(input, 'D. CHI TIẾT SẢN PHẨM', 'Loại sản phẩm');
+  const titleRow = FS_findExactRow_(tech, 'SAN_PHAM');
+  if (!table || !titleRow) return;
+
+  const headerRow = titleRow + 1;
+  const sourceByName = {};
+  table.rows.forEach(row => {
+    const name = FS_getByHeaderAny_(row, table.headers, ['Loại sản phẩm', 'Sản phẩm']);
+    if (!name) return;
+    sourceByName[FS_key_(name)] = {
+      maintenance: FS_getByHeaderAny_(row, table.headers, [
+        'Chi phí bảo trì', 'CP bảo trì', 'Bảo trì'
+      ]),
+      leaseYears: FS_getByHeaderAny_(row, table.headers, [
+        'Thời gian thuê (năm)', 'Thời gian thuê', 'Số năm thuê'
+      ]),
+      landArea: FS_getByHeaderAny_(row, table.headers, [
+        'Diện tích đất', 'DT đất'
+      ]),
+      note: FS_getByHeaderAny_(row, table.headers, ['Ghi chú'])
+    };
+  });
+
+  tech.getRange(headerRow, 11, 1, 4).setValues([[
+    'Chi phí bảo trì', 'Thời gian thuê (năm)', 'Diện tích đất', 'Ghi chú'
+  ]]);
+
+  let row = headerRow + 1;
+  while (row <= tech.getLastRow()) {
+    const productName = String(tech.getRange(row, 1).getDisplayValue() || '').trim();
+    if (!productName || /^[A-Z_]+$/.test(productName)) break;
+    const src = sourceByName[FS_key_(productName)] || {};
+    tech.getRange(row, 11, 1, 4).setValues([[
+      src.maintenance || '', src.leaseYears || '', src.landArea || '', src.note || ''
+    ]]);
+    row++;
+  }
+
+  if (row > headerRow + 1) {
+    tech.getRange(headerRow + 1, 12, row - headerRow - 1, 1).setNumberFormat('0');
+  }
 }
 
 function FS_getOrCreateSheet_(ss, name, legacyName) {
@@ -125,7 +177,7 @@ function FS_readBlock_(tech, name) {
   for (let i = r + 2, blank = 0; i <= tech.getLastRow(); i++) {
     const first = String(tech.getRange(i, 1).getDisplayValue() || '').trim();
     if (/^[A-Z_]+$/.test(first)) break;
-    const row = tech.getRange(i, 1, 1, lastCol).getValues()[0];
+    const row = tech.getRange(i, 1, 1,lastCol).getValues()[0];
     if (!row.some(v => String(v ?? '').trim() !== '')) { if (++blank >= 3) break; continue; }
     blank = 0;
     rows.push(row);
@@ -145,11 +197,8 @@ function FS_costItem_(m, names) {
   return { before: 0, vat: 0, rate: 0, name: names[0] };
 }
 
-function FS_loaiHinh_(method) {
-  return FS_norm_(method).includes('cho thue') ? 'Cho thuê' : 'Bán';
-}
+function FS_loaiHinh_(method) { return FS_norm_(method).includes('cho thue') ? 'Cho thuê' : 'Bán'; }
 function FS_productType_(name, method) { return FS_loaiHinh_(method) === 'Bán' ? 'SALE' : 'RENT'; }
-
 function FS_maSanPhamGoc_(name) {
   const k = FS_key_(name);
   if (k.includes('noxh') || k.includes('nhaoxahoi')) return 'NOXH';
