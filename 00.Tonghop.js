@@ -66,10 +66,17 @@ function FS_lapSheet00() {
 
   const equity = sumF('vongopcsh');
   const loan = sumF('giainganvay');
-  const customerFunding = sumR('tongdoanhthutruocvat') + sumR('vatdaura');
+  if (equity + loan > totalInvestment + 1) {
+    throw new Error(
+      'Vốn CSH và vốn vay vượt Tổng vốn đầu tư. ' +
+      'Tổng vốn đầu tư: ' + Math.round(totalInvestment).toLocaleString('vi-VN') +
+      '; vốn CSH + vốn vay: ' + Math.round(equity + loan).toLocaleString('vi-VN') + ' đồng.'
+    );
+  }
+  const customerFunding = Math.max(0, totalInvestment - equity - loan);
   const totalFunding = equity + loan + customerFunding;
 
-  const totalRevenueWithVat = customerFunding;
+  const totalRevenueWithVat = sumR('tongdoanhthutruocvat') + sumR('vatdaura');
   const revenueCC = FS00_sumByCode_(r, 'CC', ['tongdoanhthutruocvat', 'vatdaura']);
   const revenueLK = FS00_sumByCode_(r, 'LK', ['tongdoanhthutruocvat', 'vatdaura']);
   const revenueRent =
@@ -93,6 +100,7 @@ function FS_lapSheet00() {
 
   const rows = FS00_summaryRows_(summary);
   const billion = value => FS00_num_(value) / FS00_CFG.UNIT_DIVISOR;
+  const coreInvestment = totalInvestment - selling - operating - maintenance;
 
   const valueMap = {
     C6: billion(construction), C7: billion(clearance), C8: billion(land),
@@ -100,7 +108,7 @@ function FS_lapSheet00() {
     C12: billion(totalInvestment), C13: billion(totalInvestmentExLand),
     C17: billion(equity), C18: billion(loan), C19: billion(customerFunding), C20: billion(totalFunding),
     D25: billion(totalRevenueWithVat), D26: billion(revenueCC), D27: billion(revenueLK), D28: billion(revenueRent),
-    D29: billion(totalCostAfterVat), D30: billion(totalInvestment), D31: billion(selling)
+    D30: billion(coreInvestment), D31: billion(selling)
   };
 
   valueMap['D' + rows.operating] = billion(operating);
@@ -113,6 +121,10 @@ function FS_lapSheet00() {
   valueMap['D' + rows.cit] = billion(cit);
   valueMap['D' + rows.vatPayable] = billion(vatPayable);
   Object.keys(valueMap).forEach(a1 => summary.getRange(a1).setValue(valueMap[a1]));
+
+  summary.getRange('D29').setFormula('=SUM(D30:D' + rows.maintenance + ')');
+  summary.getRange(rows.operating, 1, 1, 5).setFontWeight('normal');
+  summary.getRange(rows.maintenance, 1, 1, 5).setFontWeight('normal');
 
   const ratioMap = {
     D6: totalInvestment ? construction / totalInvestment : 0,
@@ -187,14 +199,18 @@ function FS00_ensureOperatingRows_(sheet) {
   if (!patRow) throw new Error('Form Sheet 00 không có dòng "Lợi nhuận sau thuế".');
 
   sheet.insertRowsBefore(patRow, 2);
-  sheet.getRange(patRow, 1, 2, 5).setBorder(true, true, true, true, true, true);
-  sheet.getRange(patRow, 1, 2, 5).setBackground('#ffffff').setFontColor('#000000');
+  sheet.getRange(patRow - 1, 1, 1, 5).copyTo(
+    sheet.getRange(patRow, 1, 2, 5),
+    SpreadsheetApp.CopyPasteType.PASTE_FORMAT,
+    false
+  );
   sheet.getRange(patRow, 1).setValue('2.3');
   sheet.getRange(patRow, 2).setValue('Chi phí vận hành');
   sheet.getRange(patRow, 3).setValue('tỷ đồng');
   sheet.getRange(patRow + 1, 1).setValue('2.4');
   sheet.getRange(patRow + 1, 2).setValue('Chi phí bảo trì');
   sheet.getRange(patRow + 1, 3).setValue('tỷ đồng');
+  sheet.getRange(patRow, 1, 2, 5).setFontWeight('normal');
 }
 
 function FS00_summaryRows_(sheet) {
