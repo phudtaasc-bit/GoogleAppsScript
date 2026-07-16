@@ -29,7 +29,9 @@ function FS04_buildAndWrite_() {
   const annualInterestRate = FS04_rate_(FS04_readInfoValue_(tech, 'Lãi suất vay năm'));
 
   if (!months) throw new Error('Số tháng mô hình phải lớn hơn 0.');
-  if (loanRatio < 0 || loanRatio > 1) throw new Error('Tỷ lệ vốn vay phải nằm trong khoảng 0% đến 100%.');
+  if (loanRatio < 0 || loanRatio > 1) {
+    throw new Error('Tỷ lệ vốn vay phải nằm trong khoảng 0% đến 100%.');
+  }
   if (annualInterestRate < 0) throw new Error('Lãi suất vay năm không được âm.');
 
   const monthlyInterestRate = Math.pow(1 + annualInterestRate, 1 / 12) - 1;
@@ -50,44 +52,33 @@ function FS04_buildAndWrite_() {
 
     const fcff = current.customerCash - current.costAfterVat - vatPayable - corporateIncomeTax;
     const interestExpense = openingDebt * monthlyInterestRate;
+
+    // Tiền FCFE còn lại từ tháng trước được sử dụng trước khi huy động vốn mới.
     const cashBeforeFinancing = openingCash + fcff - interestExpense;
 
     let fundingNeed = 0;
     let equityContribution = 0;
     let loanDrawdown = 0;
     let principalRepayment = 0;
-    let cashAfterDebtService = 0;
-    let nextMonthReserve = 0;
-    let distributableFcfe = 0;
-    let closingCash = 0;
     let closingDebt = openingDebt;
+    let closingCash = 0;
 
     if (cashBeforeFinancing < 0) {
       fundingNeed = -cashBeforeFinancing;
       loanDrawdown = fundingNeed * loanRatio;
       equityContribution = fundingNeed - loanDrawdown;
       closingDebt = openingDebt + loanDrawdown;
-      cashAfterDebtService = 0;
       closingCash = 0;
-      distributableFcfe = 0;
     } else {
+      // Toàn bộ tiền dư sau chi phí và lãi vay được ưu tiên trả gốc.
       principalRepayment = Math.min(openingDebt, cashBeforeFinancing);
       closingDebt = Math.max(0, openingDebt - principalRepayment);
-      cashAfterDebtService = Math.max(0, cashBeforeFinancing - principalRepayment);
 
-      nextMonthReserve = FS04_requiredReserveForNextMonth_(
-        monthNo,
-        months,
-        costByMonth,
-        taxByMonth,
-        closingDebt,
-        closingVatCredit,
-        monthlyInterestRate
-      );
-
-      closingCash = Math.min(cashAfterDebtService, nextMonthReserve);
-      distributableFcfe = Math.max(0, cashAfterDebtService - closingCash);
+      // Phần còn lại là FCFE, tiếp tục nằm trong dự án và chuyển sang tháng sau.
+      closingCash = Math.max(0, cashBeforeFinancing - principalRepayment);
     }
+
+    const fcfe = closingCash;
 
     rows.push([
       monthNo,
@@ -113,10 +104,8 @@ function FS04_buildAndWrite_() {
       principalRepayment,
       openingDebt,
       closingDebt,
-      cashAfterDebtService,
-      nextMonthReserve,
       closingCash,
-      distributableFcfe
+      fcfe
     ]);
 
     openingCash = closingCash;
@@ -127,32 +116,6 @@ function FS04_buildAndWrite_() {
   FS04_write_(ss, rows);
   FS04_writeStatus_(rows, monthlyInterestRate, loanRatio);
   return rows;
-}
-
-function FS04_requiredReserveForNextMonth_(
-  monthNo,
-  months,
-  costByMonth,
-  taxByMonth,
-  closingDebt,
-  closingVatCredit,
-  monthlyInterestRate
-) {
-  if (monthNo >= months) return 0;
-
-  const next = costByMonth[monthNo + 1] || FS04_emptyCostMonth_(monthNo + 1);
-  const nextTax = taxByMonth[monthNo + 1] || 0;
-  const nextVatPayable = Math.max(0, next.vatOut - closingVatCredit - next.vatIn);
-  const nextInterest = closingDebt * monthlyInterestRate;
-
-  const nextMonthNetBeforeOpeningCash =
-    next.customerCash -
-    next.costAfterVat -
-    nextVatPayable -
-    nextTax -
-    nextInterest;
-
-  return Math.max(0, -nextMonthNetBeforeOpeningCash);
 }
 
 function FS04_readCostByMonth_(sheet, months) {
@@ -206,7 +169,9 @@ function FS04_readTaxByMonth_(sheet, months) {
 }
 
 function FS04_readTable_(sheet) {
-  if (sheet.getLastRow() < 1) throw new Error('Sheet "' + sheet.getName() + '" không có dữ liệu.');
+  if (sheet.getLastRow() < 1) {
+    throw new Error('Sheet "' + sheet.getName() + '" không có dữ liệu.');
+  }
 
   const columnCount = sheet.getLastColumn();
   const headers = sheet.getRange(1, 1, 1, columnCount).getDisplayValues()[0];
@@ -262,15 +227,16 @@ function FS04_write_(ss, rows) {
     'Tổng chi trước VAT', 'VAT đầu vào', 'Tổng chi sau VAT',
     'VAT khấu trừ đầu kỳ', 'VAT phải nộp', 'VAT khấu trừ cuối kỳ',
     'Thuế TNDN', 'FCFF',
-    'Tiền đầu kỳ', 'Tiền trước tài trợ', 'Nhu cầu vốn',
+    'FCFE đầu kỳ', 'Tiền trước tài trợ', 'Nhu cầu vốn',
     'Lãi vay', 'Vốn góp CSH', 'Giải ngân vay', 'Trả gốc',
     'Dư nợ đầu kỳ', 'Dư nợ cuối kỳ',
-    'Tiền sau trả gốc', 'Dự trữ chi phí tháng sau', 'Tiền cuối kỳ',
-    'FCFE có thể phân phối'
+    'FCFE cuối kỳ', 'FCFE'
   ]];
 
   sheet.getRange(1, 1, 1, headers[0].length).setValues(headers);
-  if (rows.length) sheet.getRange(2, 1, rows.length, headers[0].length).setValues(rows);
+  if (rows.length) {
+    sheet.getRange(2, 1, rows.length, headers[0].length).setValues(rows);
+  }
 
   sheet.setFrozenRows(1);
   sheet.setFrozenColumns(4);
@@ -288,7 +254,7 @@ function FS04_write_(ss, rows) {
   const widths = [
     70, 85, 65, 90, 145, 105, 135, 105, 135,
     120, 110, 120, 110, 120, 110, 130, 110, 110,
-    115, 115, 105, 110, 110, 125, 145, 110, 150
+    115, 115, 105, 110, 110, 120, 120
   ];
   widths.forEach((width, index) => sheet.setColumnWidth(index + 1, width));
   sheet.setRowHeight(1, 48);
@@ -297,15 +263,17 @@ function FS04_write_(ss, rows) {
 function FS04_writeStatus_(rows, monthlyRate, loanRatio) {
   const lastRow = rows.length ? rows[rows.length - 1] : [];
   const closingDebt = FS04_num_(lastRow[22]);
+  const closingFcfe = FS04_num_(lastRow[23]);
 
   PropertiesService.getDocumentProperties().setProperty('FS_CONVERGENCE', JSON.stringify({
     converged: true,
     iterations: 1,
     maxDiff: 0,
-    method: 'debt-sweep-next-month-reserve',
+    method: 'debt-sweep-fcfe-carry-forward',
     monthlyInterestRate: monthlyRate,
     loanRatio,
     closingDebt,
+    closingFcfe,
     time: new Date().toISOString()
   }));
 }
