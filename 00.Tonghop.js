@@ -11,12 +11,16 @@ function FS_lapSheet00() {
     ['CHỈ TIÊU', 'GIÁ TRỊ (tỷ đồng)'],
     ['Doanh thu trước VAT', sum(r, 16) / 1e9],
     ['VAT đầu ra', sum(r, 18) / 1e9],
-    ['Tổng chi trước VAT', sum(c, 18) / 1e9],
-    ['VAT đầu vào', sum(c, 19) / 1e9],
+    ['Tổng chi trước VAT', sum(c, 19) / 1e9],
+    ['VAT đầu vào', sum(c, 20) / 1e9],
     ['VAT phải nộp', sum(f, 11) / 1e9],
+    ['Tiền SDĐ', sum(c, 12) / 1e9],
+    ['Tiền thuê đất', sum(c, 13) / 1e9],
+    ['Chi phí vận hành', sum(c, 16) / 1e9],
+    ['Chi phí bảo trì', sum(c, 17) / 1e9],
     ['Lãi vay', sum(f, 17) / 1e9],
-    ['Thuế TNDN', sum(p, 18) / 1e9],
-    ['Lợi nhuận sau thuế', sum(p, 19) / 1e9],
+    ['Thuế TNDN', sum(p, 20) / 1e9],
+    ['Lợi nhuận sau thuế', sum(p, 21) / 1e9],
     ['Vốn góp CSH', sum(f, 18) / 1e9],
     ['Giải ngân vay', sum(f, 19) / 1e9],
     ['Trả gốc', sum(f, 20) / 1e9],
@@ -25,7 +29,7 @@ function FS_lapSheet00() {
   ];
 
   const sh = FS_getOrCreateSheet_(ss, FS_CFG.SHEETS.SUMMARY);
-  FS_resetSheet_(sh, 30, 5);
+  FS_resetSheet_(sh, 35, 5);
   sh.getRange('A1:E1').merge().setValue('BẢNG TỔNG HỢP PHÂN TÍCH HIỆU QUẢ ĐẦU TƯ')
     .setFontWeight('bold').setHorizontalAlignment('center');
   sh.getRange(3, 1, values.length, 2).setValues(values);
