@@ -42,8 +42,8 @@ function FS04_build_(months, loanRatio, monthlyRate) {
   const ss = SpreadsheetApp.getActive();
   const cost = ss.getSheetByName(FS_CFG.SHEETS.COST);
   const profit = ss.getSheetByName(FS_CFG.SHEETS.PROFIT);
-  const cRows = cost.getLastRow() > 1 ? cost.getRange(2, 1, cost.getLastRow() - 1, 20).getValues() : [];
-  const pRows = profit.getLastRow() > 1 ? profit.getRange(2, 1, profit.getLastRow() - 1, 19).getValues() : [];
+  const cRows = cost.getLastRow() > 1 ? cost.getRange(2, 1, cost.getLastRow() - 1, 21).getValues() : [];
+  const pRows = profit.getLastRow() > 1 ? profit.getRange(2, 1, profit.getLastRow() - 1, 21).getValues() : [];
 
   const cBy = Array.from({ length: months }, () => ({ cash: 0, vatOut: 0, costBefore: 0, vatIn: 0, costAfter: 0 }));
   cRows.forEach(r => {
@@ -51,9 +51,9 @@ function FS04_build_(months, loanRatio, monthlyRate) {
     if (i < 0 || i >= months) return;
     cBy[i].cash += FS_num_(r[7]);
     cBy[i].vatOut += FS_num_(r[8]);
-    cBy[i].costBefore += FS_num_(r[17]);
-    cBy[i].vatIn += FS_num_(r[18]);
-    cBy[i].costAfter += FS_num_(r[19]);
+    cBy[i].costBefore += FS_num_(r[18]);
+    cBy[i].vatIn += FS_num_(r[19]);
+    cBy[i].costAfter += FS_num_(r[20]);
   });
 
   const taxBy = Array(months).fill(0);
@@ -61,8 +61,8 @@ function FS04_build_(months, loanRatio, monthlyRate) {
   pRows.forEach(r => {
     const i = FS_num_(r[0]) - 1;
     if (i < 0 || i >= months) return;
-    taxBy[i] += FS_num_(r[17]);
-    patBy[i] += FS_num_(r[18]);
+    taxBy[i] += FS_num_(r[19]);
+    patBy[i] += FS_num_(r[20]);
   });
 
   let cash = 0;
@@ -119,7 +119,7 @@ function FS04_write_(rows) {
   sh.getRange(1, 1, 1, 24).setFontWeight('bold').setBackground('#ddebf7').setWrap(true);
   if (rows.length) {
     sh.getRange(2, 2, rows.length, 1).setNumberFormat('MM/yyyy');
-    sh.getRange(2, 5, rows.length, 20).setNumberFormat('#,##0.00');
+    sh.getRange(2, 5, rows.length, 20).setNumberFormat('#,##0');
   }
   sh.autoResizeColumns(1, 24);
 }
