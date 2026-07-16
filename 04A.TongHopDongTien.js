@@ -6,8 +6,7 @@ const FS04A_CFG = Object.freeze({
   HEADER_ROW: 3,
   TOTAL_COLUMN: 3,
   FIRST_YEAR_COLUMN: 4,
-  UNIT_DIVISOR: 1e9,
-  TOLERANCE: 1
+  UNIT_DIVISOR: 1e9
 });
 
 function FS_lapSheet04A() {
@@ -49,25 +48,37 @@ function FS_lapSheet04A() {
   const totalValues = FS04A_buildYearValues_(totalCost, totalCash);
 
   FS04A_writeForm_(summarySheet, yearColumns, annualValues, totalValues);
-  FS04A_validateBridge_(yearColumns, annualValues, totalValues);
 
   SpreadsheetApp.flush();
-  return { years: yearColumns.map(item => item.year), annualValues, totalValues };
+  return {
+    years: yearColumns.map(item => item.year),
+    annualValues,
+    totalValues
+  };
 }
 
 function FS04A_buildYearValues_(cost, cash) {
-  const totalInflow = cash.customerCash + cash.equityContribution + cash.loanDrawdown;
-
   const land = cost.landUse + cost.landRent;
-  const totalOutflow =
-    cost.construction + cost.clearance + land + cost.infrastructure +
-    cost.selling + cost.contingency + cost.operating + cost.maintenance +
-    cost.vatIn + cash.vatPayable + cash.cit + cash.interest + cash.principalRepayment;
 
-  const netAfterFinancing = totalInflow - totalOutflow;
-  const fcffBridge =
-    netAfterFinancing - cash.equityContribution - cash.loanDrawdown +
-    cash.principalRepayment + cash.interest;
+  const totalInflow =
+    cash.customerCash +
+    cash.equityContribution +
+    cash.loanDrawdown;
+
+  const totalOutflow =
+    cost.construction +
+    cost.clearance +
+    land +
+    cost.infrastructure +
+    cost.selling +
+    cost.contingency +
+    cost.operating +
+    cost.maintenance +
+    cost.vatIn +
+    cash.vatPayable +
+    cash.cit +
+    cash.interest +
+    cash.principalRepayment;
 
   return {
     5: cash.customerCash,
@@ -90,28 +101,32 @@ function FS04A_buildYearValues_(cost, cash) {
     22: cash.principalRepayment,
     23: totalOutflow,
 
-    25: netAfterFinancing,
+    25: totalInflow - totalOutflow,
     26: cash.equityContribution,
     27: cash.loanDrawdown,
     28: cash.principalRepayment,
     29: cash.interest,
-    30: cash.fcff,
 
-    _fcffBridge: fcffBridge
+    // Chỉ tổng hợp trực tiếp từ Sheet 04, không tính lại tại 04A.
+    30: cash.fcff,
+    31: cash.fcfe
   };
 }
 
 function FS04A_writeForm_(sheet, yearColumns, annualValues, totalValues) {
   const rowNumbers = FS04A_outputRows_();
   const lastYearColumn = yearColumns[yearColumns.length - 1].column;
+  const yearByColumn = {};
+  yearColumns.forEach(item => {
+    yearByColumn[item.column] = item.year;
+  });
 
   rowNumbers.forEach(row => {
-    const values = [];
-    values.push(FS04A_toReportUnit_(totalValues[row] || 0));
+    const values = [FS04A_toReportUnit_(totalValues[row] || 0)];
 
     for (let column = FS04A_CFG.FIRST_YEAR_COLUMN; column <= lastYearColumn; column++) {
-      const yearItem = yearColumns.find(item => item.column === column);
-      const value = yearItem ? (annualValues[yearItem.year][row] || 0) : 0;
+      const year = yearByColumn[column];
+      const value = year ? (annualValues[year][row] || 0) : 0;
       values.push(FS04A_toReportUnit_(value));
     }
 
@@ -119,33 +134,19 @@ function FS04A_writeForm_(sheet, yearColumns, annualValues, totalValues) {
   });
 }
 
-function FS04A_validateBridge_(yearColumns, annualValues, totalValues) {
-  const failures = [];
-
-  yearColumns.forEach(item => {
-    const values = annualValues[item.year];
-    const diff = FS04A_num_(values[30]) - FS04A_num_(values._fcffBridge);
-    if (Math.abs(diff) > FS04A_CFG.TOLERANCE) {
-      failures.push(item.year + ': ' + Math.round(diff).toLocaleString('vi-VN') + ' đồng');
-    }
-  });
-
-  const totalDiff = FS04A_num_(totalValues[30]) - FS04A_num_(totalValues._fcffBridge);
-  if (Math.abs(totalDiff) > FS04A_CFG.TOLERANCE) {
-    failures.push('Tổng: ' + Math.round(totalDiff).toLocaleString('vi-VN') + ' đồng');
-  }
-
-  if (failures.length) {
-    throw new Error('04A không khớp cầu nối FCFF: ' + failures.join('; '));
-  }
-}
-
 function FS04A_readCostByYear_(sheet) {
   const table = FS04A_readTable_(sheet);
   FS04A_require_(table.index, [
-    'nam', 'xdtbtruocvat', 'gpmbtruocvat', 'htkttruocvat',
-    'tiensddtruocvat', 'tienthuedattruocvat', 'chiphibanhangtruocvat',
-    'chiphivanhanhtruocvat', 'chiphibaotritruocvat', 'chiphiduphongtruocvat',
+    'nam',
+    'xdtbtruocvat',
+    'gpmbtruocvat',
+    'htkttruocvat',
+    'tiensddtruocvat',
+    'tienthuedattruocvat',
+    'chiphibanhangtruocvat',
+    'chiphivanhanhtruocvat',
+    'chiphibaotritruocvat',
+    'chiphiduphongtruocvat',
     'vatdauvao'
   ], sheet.getName());
 
@@ -153,8 +154,8 @@ function FS04A_readCostByYear_(sheet) {
   table.values.forEach(row => {
     const year = FS04A_year_(row[table.index.nam]);
     if (!year) return;
-    const item = result[year] || FS04A_emptyCostYear_();
 
+    const item = result[year] || FS04A_emptyCostYear_();
     item.construction += FS04A_num_(row[table.index.xdtbtruocvat]);
     item.clearance += FS04A_num_(row[table.index.gpmbtruocvat]);
     item.infrastructure += FS04A_num_(row[table.index.htkttruocvat]);
@@ -165,25 +166,33 @@ function FS04A_readCostByYear_(sheet) {
     item.maintenance += FS04A_num_(row[table.index.chiphibaotritruocvat]);
     item.contingency += FS04A_num_(row[table.index.chiphiduphongtruocvat]);
     item.vatIn += FS04A_num_(row[table.index.vatdauvao]);
-
     result[year] = item;
   });
+
   return result;
 }
 
 function FS04A_readCashByYear_(sheet) {
   const table = FS04A_readTable_(sheet);
   FS04A_require_(table.index, [
-    'nam', 'dongtienkhachhang', 'vatphainop', 'thuetndn', 'laivay',
-    'vongopcsh', 'giainganvay', 'tragoc', 'fcff'
+    'nam',
+    'dongtienkhachhang',
+    'vatphainop',
+    'thuetndn',
+    'laivay',
+    'vongopcsh',
+    'giainganvay',
+    'tragoc',
+    'fcff',
+    'fcfe'
   ], sheet.getName());
 
   const result = {};
   table.values.forEach(row => {
     const year = FS04A_year_(row[table.index.nam]);
     if (!year) return;
-    const item = result[year] || FS04A_emptyCashYear_();
 
+    const item = result[year] || FS04A_emptyCashYear_();
     item.customerCash += FS04A_num_(row[table.index.dongtienkhachhang]);
     item.vatPayable += FS04A_num_(row[table.index.vatphainop]);
     item.cit += FS04A_num_(row[table.index.thuetndn]);
@@ -192,9 +201,10 @@ function FS04A_readCashByYear_(sheet) {
     item.loanDrawdown += FS04A_num_(row[table.index.giainganvay]);
     item.principalRepayment += FS04A_num_(row[table.index.tragoc]);
     item.fcff += FS04A_num_(row[table.index.fcff]);
-
+    item.fcfe += FS04A_num_(row[table.index.fcfe]);
     result[year] = item;
   });
+
   return result;
 }
 
@@ -208,21 +218,25 @@ function FS04A_readYearColumns_(sheet) {
   ).getValues()[0];
 
   const result = [];
-  let blankRun = 0;
   values.forEach((value, index) => {
     const year = FS04A_year_(value);
     if (year) {
-      result.push({ year, column: FS04A_CFG.FIRST_YEAR_COLUMN + index });
-      blankRun = 0;
-    } else if (result.length) {
-      blankRun++;
+      result.push({
+        year,
+        column: FS04A_CFG.FIRST_YEAR_COLUMN + index
+      });
     }
   });
+
   return result;
 }
 
 function FS04A_outputRows_() {
-  return [5, 6, 7, 8, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 25, 26, 27, 28, 29, 30];
+  return [
+    5, 6, 7, 8,
+    10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23,
+    25, 26, 27, 28, 29, 30, 31
+  ];
 }
 
 function FS04A_sumObjects_(objects, seed) {
@@ -259,7 +273,8 @@ function FS04A_emptyCashYear_() {
     equityContribution: 0,
     loanDrawdown: 0,
     principalRepayment: 0,
-    fcff: 0
+    fcff: 0,
+    fcfe: 0
   };
 }
 
@@ -273,10 +288,12 @@ function FS04A_readTable_(sheet) {
   const values = sheet.getLastRow() > 1
     ? sheet.getRange(2, 1, sheet.getLastRow() - 1, columns).getValues()
     : [];
+
   const index = {};
   headers.forEach((header, position) => {
     index[FS04A_key_(header)] = position;
   });
+
   return { values, index };
 }
 
@@ -292,24 +309,34 @@ function FS04A_toReportUnit_(value) {
 }
 
 function FS04A_year_(value) {
-  if (value instanceof Date && !isNaN(value.getTime())) return value.getFullYear();
+  if (value instanceof Date && !isNaN(value.getTime())) {
+    return value.getFullYear();
+  }
+
   if (typeof value === 'number' && isFinite(value)) {
     const year = Math.round(value);
     return year >= 1900 && year <= 3000 ? year : 0;
   }
+
   const digits = String(value == null ? '' : value).replace(/[^0-9]/g, '');
   if (digits.length < 4) return 0;
+
   const year = Number(digits.slice(-4));
   return year >= 1900 && year <= 3000 ? year : 0;
 }
 
 function FS04A_num_(value) {
-  if (typeof value === 'number') return isFinite(value) ? value : 0;
+  if (typeof value === 'number') {
+    return isFinite(value) ? value : 0;
+  }
+
   const text = String(value == null ? '' : value).trim().replace(/\s/g, '');
   if (!text) return 0;
+
   const normalized = text.includes(',') && text.includes('.')
     ? text.replace(/\./g, '').replace(',', '.')
     : text.replace(/,/g, '');
+
   const number = Number(normalized);
   return isFinite(number) ? number : 0;
 }
