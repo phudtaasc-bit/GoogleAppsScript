@@ -7,7 +7,7 @@ function onOpen() {
     .addItem('5. Hội tụ 04. Dòng tiền & Tài trợ', 'FS_hoiTuTaiTro')
     .addSeparator()
     .addItem('6. Lập 04A. Tổng hợp dòng tiền', 'FS_lapSheet04A')
-    .addItem('7. Lập 00. Tổng hợp', 'FS_lapSheet00')
+    .addItem('7. Lập 00. Tổng hợp', 'FS_lapSheet00_TheoDanhMuc')
     .addItem('8. Lập bảng độ nhạy', 'FS05_lapBangDoNhay_AnToan')
     .addItem('9. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
     .addSeparator()
@@ -21,7 +21,7 @@ function FS_chayToanBo() {
   FS_lapSheet03();
   FS_hoiTuTaiTro();
   if (typeof FS_lapSheet04A === 'function') FS_lapSheet04A();
-  if (typeof FS_lapSheet00 === 'function') FS_lapSheet00();
+  if (typeof FS_lapSheet00_TheoDanhMuc === 'function') FS_lapSheet00_TheoDanhMuc();
   FS_lapSheet99();
   SpreadsheetApp.getUi().alert('Đã chạy xong mô hình và kiểm tra.');
 }
