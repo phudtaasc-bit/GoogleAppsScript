@@ -189,7 +189,7 @@ function FS03_readRevenueRows_(sheet, productByCode) {
 
   const required = [
     'thangso', 'thang', 'nam', 'quy', 'masp',
-    'doanhthubntruocvat', 'doanhthuthuetruocvat',
+    'doanhthubantruocvat', 'doanhthuthuetruocvat',
     'vatdaura', 'dongtienkhachhang'
   ];
   const missing = required.filter(key => index[key] == null);
@@ -205,7 +205,7 @@ function FS03_readRevenueRows_(sheet, productByCode) {
       year: FS03_num_(row[index.nam]),
       quarter: row[index.quy],
       code,
-      saleRevenue: FS03_num_(row[index.doanhthubntruocvat]),
+      saleRevenue: FS03_num_(row[index.doanhthubantruocvat]),
       rentRevenue: FS03_num_(row[index.doanhthuthuetruocvat]),
       vatOut: FS03_num_(row[index.vatdaura]),
       customerCash: FS03_num_(row[index.dongtienkhachhang])
