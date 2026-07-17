@@ -34,8 +34,8 @@ function FS00B_phanTichHieuQuaTheoSanPham() {
   const cash = FS00B_readTable_(sheets.cash);
 
   FS00B_require_(revenue, [
-    'thangso', 'thang', 'masp', 'tensanpham', 'loaihinh',
-    'tongdoanhthutruocvat', 'vatdau ra', 'dongtienthukhachhang'
+    'thangso', 'thang', 'masp', 'tensanpham', 'nhom',
+    'tongdoanhthutruocvat', 'vatdaura', 'dongtienkhachhang'
   ], sheets.revenue.getName());
 
   FS00B_require_(cost, [
@@ -127,7 +127,7 @@ function FS00B_analyzeProduct_(ctx) {
     const c = costMap[monthNo] || null;
     const t = taxMap[monthNo] || null;
 
-    const customerCash = r ? FS00B_num_(r[ctx.revenue.index.dongtienthukhachhang]) : 0;
+    const customerCash = r ? FS00B_num_(r[ctx.revenue.index.dongtienkhachhang]) : 0;
     const vatOut = r ? FS00B_num_(r[ctx.revenue.index.vatdaura]) : 0;
 
     const costBeforeVat = c ? FS00B_num_(c[ctx.cost.index.tongchitruocvat]) : 0;
@@ -328,9 +328,18 @@ function FS00B_readTable_(sheet) {
   });
 
   // Alias có khoảng trắng được chuẩn hóa lại cho dễ đọc ở các hàm trên.
-  index.vatdaura = index[FS00B_key_('VAT đầu ra')];
-  index.dongtienthukhachhang = index[FS00B_key_('Dòng tiền thu khách hàng')];
-  index.tongdoanhthutruocvat = index[FS00B_key_('Tổng doanh thu trước VAT')];
+  index.vatdaura = FS00B_findHeaderIndex_(index, ['VAT đầu ra']);
+  index.dongtienkhachhang = FS00B_findHeaderIndex_(index, [
+    'Dòng tiền khách hàng',
+    'Dòng tiền thu khách hàng'
+  ]);
+  index.nhom = FS00B_findHeaderIndex_(index, [
+    'Nhóm',
+    'Loại hình'
+  ]);
+  index.tongdoanhthutruocvat = FS00B_findHeaderIndex_(index, [
+    'Tổng doanh thu trước VAT'
+  ]);
   index.tongchitruocvat = index[FS00B_key_('Tổng chi trước VAT')];
   index.vatdauvao = index[FS00B_key_('VAT đầu vào')];
   index.tongchisauvat = index[FS00B_key_('Tổng chi sau VAT')];
@@ -350,6 +359,14 @@ function FS00B_readTable_(sheet) {
   index.tragoc = index[FS00B_key_('Trả gốc')];
 
   return { sheet, values, header: values[0], rows: values.slice(1), index };
+}
+
+function FS00B_findHeaderIndex_(index, aliases) {
+  for (const alias of aliases) {
+    const key = FS00B_key_(alias);
+    if (index[key] != null) return index[key];
+  }
+  return null;
 }
 
 function FS00B_require_(table, keys, sheetName) {
@@ -374,7 +391,7 @@ function FS00B_getProducts_(revenue) {
     products.push({
       code,
       name: String(row[revenue.index.tensanpham] || code).trim(),
-      group: String(row[revenue.index.loaihinh] || '').trim()
+      group: String(row[revenue.index.nhom] || '').trim()
     });
   });
   return products;
