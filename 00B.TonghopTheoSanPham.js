@@ -352,9 +352,20 @@ function FS00B_readTable_(sheet) {
   index.chiphivanhanhtruocvat = index[FS00B_key_('Chi phí vận hành trước VAT')];
   index.chiphibaotritruocvat = index[FS00B_key_('Chi phí bảo trì trước VAT')];
   index.chiphiduphongtruocvat = index[FS00B_key_('Chi phí dự phòng trước VAT')];
-  index.laivayphanbo = index[FS00B_key_('Lãi vay phân bổ')];
-  index.thuetndn = index[FS00B_key_('Thuế TNDN')];
-  index.lnst = index[FS00B_key_('LNST')];
+  index.laivayphanbo = FS00B_findHeaderIndex_(index, [
+    'Lãi vay phân bổ',
+    'Chi phí lãi vay phân bổ',
+    'Lãi vay'
+  ]);
+  index.thuetndn = FS00B_findHeaderIndex_(index, [
+    'Thuế TNDN',
+    'Thuế TNDN phải nộp',
+    'Thuế TNDN tạm tính'
+  ]);
+  index.lnst = FS00B_findHeaderIndex_(index, [
+    'LNST',
+    'Lợi nhuận sau thuế'
+  ]);
   index.giainganvay = index[FS00B_key_('Giải ngân vay')];
   index.tragoc = index[FS00B_key_('Trả gốc')];
 
