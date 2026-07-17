@@ -1,8 +1,12 @@
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   const productMenu = ui.createMenu('Tổng hợp hiệu quả từng SP')
-    .addItem('Chọn sản phẩm để tính', 'FS_SP_chonVaTinhMotSanPham_V2')
-    .addItem('Khôi phục mô hình gốc', 'FS_SP_khoiPhucMoHinhGoc');
+    .addItem('0. Khôi phục mô hình gốc', 'FS_SP_khoiPhucMoHinhGoc_V2')
+    .addSeparator()
+    .addItem('1. Chuẩn bị kịch bản sản phẩm', 'FS_SP_B1_ChuanBiKichBan')
+    .addItem('2. Lập 03A cho sản phẩm', 'FS_SP_B2_Lap03A')
+    .addItem('3. Hội tụ 04 cho sản phẩm', 'FS_SP_B3_HoiTu04')
+    .addItem('4. Ghi kết quả và khôi phục Base', 'FS_SP_B4_GhiKetQuaVaKhoiPhuc');
 
   ui.createMenu('FS - MÔ HÌNH ĐẦU TƯ')
     .addItem('1. Cập nhật 01A. Kỹ thuật', 'FS_capNhatKyThuat')
