@@ -41,20 +41,17 @@ function FS00H_dinhDangMucIII_() {
   const rowMap = FS00H_rowMap_(sheet, headerRow, lastRow);
   const fullRange = sheet.getRange(titleRow, 1, lastRow - titleRow + 1, noteCol);
 
-  // Khung chung.
   fullRange
     .setFontFamily('Times New Roman')
     .setVerticalAlignment('middle')
     .setBorder(true, true, true, true, true, true, FS00H_CFG.BORDER, SpreadsheetApp.BorderStyle.SOLID);
 
-  // Tiêu đề phần III.
   sheet.getRange(titleRow, 1, 1, noteCol)
     .setBackground(FS00H_CFG.SECTION_BG)
     .setFontWeight('bold')
     .setHorizontalAlignment('center')
     .setFontSize(12);
 
-  // Dòng tiêu đề cột.
   sheet.getRange(headerRow, 1, 1, noteCol)
     .setBackground(FS00H_CFG.HEADER_BG)
     .setFontColor('#ffffff')
@@ -62,7 +59,6 @@ function FS00H_dinhDangMucIII_() {
     .setHorizontalAlignment('center')
     .setWrap(true);
 
-  // Canh lề và định dạng số.
   if (lastRow > headerRow) {
     sheet.getRange(headerRow + 1, 1, lastRow - headerRow, 1).setHorizontalAlignment('center');
     sheet.getRange(headerRow + 1, 3, lastRow - headerRow, 1).setHorizontalAlignment('center');
@@ -74,7 +70,6 @@ function FS00H_dinhDangMucIII_() {
       .setWrap(true);
   }
 
-  // Các dòng tổng và chỉ tiêu chính in đậm.
   FS00H_boldRows_(sheet, rowMap, [
     'Tổng doanh thu có VAT',
     'Tổng chi phí có VAT',
@@ -91,14 +86,12 @@ function FS00H_dinhDangMucIII_() {
     'Tổng VAT phải nộp'
   ], noteCol);
 
-  // Khối FCFF màu hồng nhạt, chữ đỏ.
   FS00H_styleRows_(sheet, rowMap, [
     'NPV dự án',
     'IRR dự án',
     'Thời gian hoàn vốn dự án'
   ], noteCol, FS00H_CFG.PROJECT_BG, FS00H_CFG.RED);
 
-  // Khối FCFE màu xanh nhạt, chữ đỏ.
   FS00H_styleRows_(sheet, rowMap, [
     'NPV vốn CSH',
     'IRR vốn CSH',
@@ -106,7 +99,6 @@ function FS00H_dinhDangMucIII_() {
     'Thời gian hoàn vốn vốn CSH'
   ], noteCol, FS00H_CFG.EQUITY_BG, FS00H_CFG.RED);
 
-  // Định dạng riêng IRR và hoàn vốn.
   FS00H_numberFormatRows_(sheet, rowMap, ['IRR dự án', 'IRR vốn CSH'], 4, noteCol - 4, '0.00%');
   FS00H_numberFormatRows_(sheet, rowMap, [
     'Thời gian hoàn vốn dự án',
@@ -114,7 +106,6 @@ function FS00H_dinhDangMucIII_() {
     'Thời gian hoàn vốn vốn CSH'
   ], 4, noteCol - 4, '0.00');
 
-  // Ghi chú chỉ tiêu hiệu quả màu đỏ.
   FS00H_fontColorRows_(sheet, rowMap, [
     'NPV dự án',
     'IRR dự án',
@@ -125,7 +116,6 @@ function FS00H_dinhDangMucIII_() {
     'Thời gian hoàn vốn vốn CSH'
   ], noteCol, FS00H_CFG.RED);
 
-  // Kích thước cột theo mẫu.
   sheet.setColumnWidth(1, 45);
   sheet.setColumnWidth(2, 285);
   sheet.setColumnWidth(3, 110);
@@ -135,7 +125,10 @@ function FS00H_dinhDangMucIII_() {
 
   sheet.setRowHeight(titleRow, 24);
   sheet.setRowHeight(headerRow, 28);
-  sheet.setFrozenRows(Math.max(sheet.getFrozenRows(), headerRow));
+
+  // Tuyệt đối không cố định hàng/cột tại Sheet 00.
+  sheet.setFrozenRows(0);
+  sheet.setFrozenColumns(0);
 }
 
 function FS00H_findHeaderRow_(sheet) {
