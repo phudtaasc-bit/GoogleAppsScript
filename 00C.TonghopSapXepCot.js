@@ -1,4 +1,3 @@
-
 /**
  * 00C.TonghopSapXepCot.js
  *
@@ -53,7 +52,10 @@ function FS00C_chuanBiCotSanPham_(summary, products) {
   FS00C_copyHeaderFormat_(summary, headerRow, 4, firstProductColumn, productCount);
   FS00C_copyBodyFormat_(summary, headerRow, lastSectionRow, 4, firstProductColumn, productCount);
 
-  summary.setFrozenRows(Math.max(summary.getFrozenRows(), headerRow));
+  // Sheet 00 không cố định hàng/cột để người dùng cuộn tự do.
+  summary.setFrozenRows(0);
+  summary.setFrozenColumns(0);
+
   summary.setColumnWidth(4, 110);
   summary.setColumnWidths(firstProductColumn, productCount, 125);
   summary.setColumnWidth(desiredNoteColumn, 210);
