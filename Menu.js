@@ -1,5 +1,10 @@
 function onOpen() {
-  SpreadsheetApp.getUi().createMenu('FS - MÔ HÌNH ĐẦU TƯ')
+  const ui = SpreadsheetApp.getUi();
+  const productMenu = ui.createMenu('Tổng hợp hiệu quả từng SP')
+    .addItem('Chọn sản phẩm để tính', 'FS_SP_chonVaTinhMotSanPham')
+    .addItem('Khôi phục mô hình gốc', 'FS_SP_khoiPhucMoHinhGoc');
+
+  ui.createMenu('FS - MÔ HÌNH ĐẦU TƯ')
     .addItem('1. Cập nhật 01A. Kỹ thuật', 'FS_capNhatKyThuat')
     .addItem('2. Lập 02. Doanh thu', 'FS_lapSheet02')
     .addItem('3. Lập 03. Chi phí & Vốn', 'FS_lapSheet03')
@@ -10,6 +15,8 @@ function onOpen() {
     .addItem('7. Lập 00. Tổng hợp', 'FS_lapSheet00_TheoDanhMucVaSanPham_GhiChuCuoi')
     .addItem('8. Lập bảng độ nhạy', 'FS05_lapBangDoNhay_AnToan')
     .addItem('9. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
+    .addSeparator()
+    .addSubMenu(productMenu)
     .addSeparator()
     .addItem('Chạy toàn bộ mô hình', 'FS_chayToanBo')
     .addToUi();
