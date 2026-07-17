@@ -9,8 +9,9 @@ function onOpen() {
     .addItem('6. Lập 04A. Tổng hợp dòng tiền', 'FS_lapSheet04A')
     .addItem('7. Lập 00. Tổng hợp', 'FS_lapSheet00_TheoDanhMuc')
     .addItem('8. Phân tích hiệu quả từng sản phẩm', 'FS00F_phanTichHieuQuaTheoSanPham')
-    .addItem('9. Lập bảng độ nhạy', 'FS05_lapBangDoNhay_AnToan')
-    .addItem('10. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
+    .addItem('9. Tạo bảng kiểm tra IRR sản phẩm', 'FS00G_taoBangDebugIRR')
+    .addItem('10. Lập bảng độ nhạy', 'FS05_lapBangDoNhay_AnToan')
+    .addItem('11. Chạy 99. Kiểm tra mô hình', 'FS_lapSheet99')
     .addSeparator()
     .addItem('Chạy toàn bộ mô hình', 'FS_chayToanBo')
     .addToUi();
