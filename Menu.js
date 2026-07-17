@@ -1,7 +1,7 @@
 function onOpen() {
   const ui = SpreadsheetApp.getUi();
   const productMenu = ui.createMenu('Tổng hợp hiệu quả từng SP')
-    .addItem('Chọn sản phẩm để tính', 'FS_SP_chonVaTinhMotSanPham')
+    .addItem('Chọn sản phẩm để tính', 'FS_SP_chonVaTinhMotSanPham_V2')
     .addItem('Khôi phục mô hình gốc', 'FS_SP_khoiPhucMoHinhGoc');
 
   ui.createMenu('FS - MÔ HÌNH ĐẦU TƯ')
