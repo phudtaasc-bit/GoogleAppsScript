@@ -13,11 +13,11 @@ const FS00H_CFG = Object.freeze({
  * Chạy phân tích theo sản phẩm, sau đó định dạng lại Mục III Sheet 00.
  */
 function FS00H_phanTichVaDinhDangTheoSanPham() {
-  if (typeof FS00F_phanTichHieuQuaTheoSanPham !== 'function') {
-    throw new Error('Thiếu hàm FS00F_phanTichHieuQuaTheoSanPham.');
+  if (typeof FS00I_phanTichHieuQuaTheoSanPham !== 'function') {
+    throw new Error('Thiếu hàm FS00I_phanTichHieuQuaTheoSanPham.');
   }
 
-  const results = FS00F_phanTichHieuQuaTheoSanPham();
+  const results = FS00I_phanTichHieuQuaTheoSanPham();
   FS00H_dinhDangMucIII_();
   SpreadsheetApp.getActive().toast(
     'Đã phân tích và định dạng bảng hiệu quả từng sản phẩm.',
