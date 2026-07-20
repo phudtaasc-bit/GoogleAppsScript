@@ -45,43 +45,70 @@ function FS_lapSheet02() {
   FS02_validateProducts_(products);
 
   const productCodes = new Set(products.map(product => product.code));
-  const plans = FS02_readBlock_(tech, 'KE_HOACH_BAN_THU_TIEN')
+  const allPlans = FS02_readBlock_(tech, 'KE_HOACH_BAN_THU_TIEN')
     .map(row => ({
       planGroup: FS02_key_(row[0]),
       code: String(row[1] || '').trim().toUpperCase(),
+      batchCount: Math.max(0, FS02_num_(row[2])),
+      batchNo: Math.max(0, FS02_num_(row[3])),
       start: Math.max(1, FS02_num_(row[4])),
       duration: Math.max(1, FS02_num_(row[5])),
-      rate: FS02_rate_(row[6])
+      rate: FS02_rate_(row[6]),
+      note: String(row[7] || '').trim(),
+      noteKey: FS02_key_(row[7])
     }))
-    .filter(plan =>
-      plan.planGroup === 'thutien' &&
-      plan.code &&
-      productCodes.has(plan.code)
-    );
+    .filter(plan => plan.code && productCodes.has(plan.code));
 
-  FS02_validateSalePlans_(products, plans);
+  const salePlans = allPlans.filter(plan => plan.planGroup === 'banhang');
+  const collectionPlans = allPlans.filter(plan => plan.planGroup === 'thutien');
 
-  const plansByStartMonth = FS02_indexPlansByStart_(plans, months);
-  const plansByActiveMonth = FS02_indexPlansByActiveMonth_(plans, months);
+  FS02_linkCollectionPlans_(products, salePlans, collectionPlans);
+  FS02_validateSalePlans_(products, collectionPlans);
+
+  const collectionPlansByStartMonth = FS02_indexPlansByStart_(collectionPlans, months);
+  const rentPlansByActiveMonth = FS02_indexPlansByActiveMonth_(collectionPlans, months);
+  const salePlansByCode = FS02_indexSalePlansByCode_(salePlans);
   const rows = [];
 
   for (let monthNo = 1; monthNo <= months; monthNo++) {
     const date = FS02_addMonths_(startDate, monthNo - 1);
-    const elapsedYears = (monthNo - 1) / 12;
-    const salePriceFactor = Math.pow(1 + annualSaleGrowth, elapsedYears);
-    const rentPriceFactor = Math.pow(1 + annualRentGrowth, elapsedYears);
+    const rentElapsedYears = (monthNo - 1) / 12;
+    const rentPriceFactor = Math.pow(1 + annualRentGrowth, rentElapsedYears);
 
     products.forEach(product => {
       const key = product.code + '|' + monthNo;
+      const monthCollectionPlans = collectionPlansByStartMonth[key] || [];
       const collectionProgress = product.group === 'Bán'
-        ? (plansByStartMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0)
-        : (plansByActiveMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0);
+        ? monthCollectionPlans.reduce((sum, plan) => sum + plan.rate, 0)
+        : (rentPlansByActiveMonth[key] || []).reduce((sum, plan) => sum + plan.rate, 0);
 
-      const salePrice = product.salePrice * salePriceFactor;
+      let salePrice = 0;
+      let saleRevenue = 0;
+
+      if (product.group === 'Bán') {
+        // NOXH giữ nguyên đơn giá cơ sở; các sản phẩm bán khác tăng giá theo đợt mở bán.
+        const productSaleGrowth = product.code === 'NOXH' ? 0 : annualSaleGrowth;
+
+        saleRevenue = monthCollectionPlans.reduce((sum, plan) => {
+          const tranchePrice = FS02_salePriceAtMonth_(
+            product.salePrice,
+            productSaleGrowth,
+            plan.saleStart
+          );
+          return sum + product.area * tranchePrice * plan.rate;
+        }, 0);
+
+        salePrice = collectionProgress > 0 && product.area > 0
+          ? saleRevenue / (product.area * collectionProgress)
+          : FS02_latestOpenedSalePrice_(
+              product.salePrice,
+              productSaleGrowth,
+              salePlansByCode[product.code] || [],
+              monthNo
+            );
+      }
+
       const rentPrice = product.rentPrice * rentPriceFactor;
-      const saleRevenue = product.group === 'Bán'
-        ? product.area * salePrice * collectionProgress
-        : 0;
       const rentRevenue = product.group === 'Cho thuê'
         ? product.area * rentPrice * product.occupancy * collectionProgress
         : 0;
@@ -127,6 +154,91 @@ function FS_lapSheet02() {
 
   if (rows.length) sheet.getRange(2, 1, rows.length, 19).setValues(rows);
   FS02_format_(sheet, rows.length + 1);
+}
+
+function FS02_linkCollectionPlans_(products, salePlans, collectionPlans) {
+  const saleCodes = new Set(
+    products.filter(product => product.group === 'Bán').map(product => product.code)
+  );
+  const salePlanIndex = {};
+  const salePlansByCode = {};
+
+  salePlans.forEach(plan => {
+    if (!saleCodes.has(plan.code)) return;
+    if (!salePlansByCode[plan.code]) salePlansByCode[plan.code] = [];
+    salePlansByCode[plan.code].push(plan);
+
+    if (plan.noteKey) {
+      const key = plan.code + '|' + plan.noteKey;
+      if (salePlanIndex[key]) {
+        throw new Error(
+          'Trùng Ghi chú đợt bán hàng của sản phẩm ' + plan.code + ': "' + plan.note + '".'
+        );
+      }
+      salePlanIndex[key] = plan;
+    }
+  });
+
+  saleCodes.forEach(code => {
+    const productSalePlans = salePlansByCode[code] || [];
+    if (!productSalePlans.length) {
+      throw new Error('Sản phẩm bán ' + code + ' chưa có dòng "Bán hàng".');
+    }
+  });
+
+  collectionPlans.forEach(plan => {
+    if (!saleCodes.has(plan.code)) return;
+
+    const productSalePlans = salePlansByCode[plan.code] || [];
+    let linkedSalePlan = null;
+
+    if (plan.noteKey) {
+      linkedSalePlan = salePlanIndex[plan.code + '|' + plan.noteKey] || null;
+    } else if (productSalePlans.length === 1) {
+      linkedSalePlan = productSalePlans[0];
+    }
+
+    if (!linkedSalePlan) {
+      throw new Error(
+        'Dòng Thu tiền của sản phẩm ' + plan.code +
+        ' tại tháng ' + plan.start +
+        ' không xác định được đợt bán hàng từ cột Ghi chú: "' + plan.note + '".'
+      );
+    }
+
+    plan.saleStart = linkedSalePlan.start;
+    plan.saleBatchNo = linkedSalePlan.batchNo;
+    plan.saleNote = linkedSalePlan.note;
+  });
+}
+
+function FS02_indexSalePlansByCode_(salePlans) {
+  const index = {};
+  salePlans.forEach(plan => {
+    if (!index[plan.code]) index[plan.code] = [];
+    index[plan.code].push(plan);
+  });
+  Object.keys(index).forEach(code => {
+    index[code].sort((a, b) => a.start - b.start || a.batchNo - b.batchNo);
+  });
+  return index;
+}
+
+function FS02_salePriceAtMonth_(basePrice, annualGrowth, saleStartMonth) {
+  const elapsedYears = (Math.max(1, saleStartMonth) - 1) / 12;
+  return basePrice * Math.pow(1 + annualGrowth, elapsedYears);
+}
+
+function FS02_latestOpenedSalePrice_(basePrice, annualGrowth, salePlans, monthNo) {
+  let latest = null;
+  salePlans.forEach(plan => {
+    if (plan.start <= monthNo && (!latest || plan.start > latest.start)) {
+      latest = plan;
+    }
+  });
+  return latest
+    ? FS02_salePriceAtMonth_(basePrice, annualGrowth, latest.start)
+    : basePrice;
 }
 
 function FS02_readInfoValue_(sheet, label) {
