@@ -15,7 +15,14 @@ function FS_lapSheet03() {
   }
 
   const months = Math.max(0, FS03_num_(FS03_readInfoValue_(tech, 'Số tháng mô hình')));
+  const annualCostEscalation = FS03_rate_(
+    FS03_readInfoValue_(tech, 'Tỷ lệ trượt chi phí/năm')
+  );
+
   if (!months) throw new Error('Số tháng mô hình phải lớn hơn 0.');
+  if (annualCostEscalation <= -1) {
+    throw new Error('Tỷ lệ trượt chi phí/năm phải lớn hơn -100%.');
+  }
 
   const products = FS03_readProducts_(tech);
   const productByCode = {};
@@ -36,14 +43,19 @@ function FS_lapSheet03() {
   const rows = [];
 
   for (let monthNo = 1; monthNo <= months; monthNo++) {
+    const elapsedYears = (monthNo - 1) / 12;
+    const costEscalationFactor = Math.pow(1 + annualCostEscalation, elapsedYears);
+
     products.forEach(product => {
       const key = product.code + '|' + monthNo;
       const revenue = revenueByCodeMonth[key] || FS03_emptyRevenue_(monthNo, product);
       const areaShare = product.area / totalArea;
 
-      const construction = FS03_scheduled_(scheduledByItemMonth, 'construction', monthNo) * areaShare;
+      const constructionBase = FS03_scheduled_(scheduledByItemMonth, 'construction', monthNo) * areaShare;
+      const infrastructureBase = FS03_scheduled_(scheduledByItemMonth, 'infrastructure', monthNo) * areaShare;
+      const construction = constructionBase * costEscalationFactor;
+      const infrastructure = infrastructureBase * costEscalationFactor;
       const clearance = FS03_scheduled_(scheduledByItemMonth, 'clearance', monthNo) * areaShare;
-      const infrastructure = FS03_scheduled_(scheduledByItemMonth, 'infrastructure', monthNo) * areaShare;
       const landUse = product.code === 'LK'
         ? FS03_scheduled_(scheduledByItemMonth, 'landUseLK', monthNo)
         : 0;
